@@ -1,0 +1,132 @@
+[project]
+name = "datamasque-cli"
+version = "1.0.0"
+description = "Official command-line interface for the DataMasque data-masking platform."
+authors = [
+    { name = "DataMasque Ltd" },
+]
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+dependencies = [
+    "typer>=0.15.0",
+    "tomli-w>=1.0.0",
+    "datamasque-python>=1.0.0,<2",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Database",
+    "Topic :: Utilities",
+    "Typing :: Typed",
+]
+
+[project.urls]
+Homepage = "https://datamasque.com/"
+Repository = "https://github.com/datamasque/datamasque-cli"
+Issues = "https://github.com/datamasque/datamasque-cli/issues"
+
+[project.scripts]
+dm = "datamasque_cli.main:app"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.9",
+    "mypy>=1.10",
+    "types-requests>=2.31",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.format]
+quote-style = "preserve"
+
+[tool.ruff.lint]
+select = [
+    "A",
+    "ANN",
+    "ARG",
+    "B",
+    "C4",
+    "COM",
+    "E",
+    "F",
+    "FURB",
+    "I",
+    "ISC",
+    "PIE",
+    "PL",
+    "RET",
+    "RUF",
+    "SIM",
+    "T20",
+    "UP",
+    "W",
+]
+ignore = [
+    "ANN002",
+    "ANN003",
+    "B008",
+    "COM812",
+    "E501",
+    "ISC001",
+    "PLR0913",
+    "RET503",
+    "SLF001",
+    "SIM105",
+    "SIM108",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*" = [
+    "ANN",
+    "ARG",
+    "PLR0913",
+    "PLR2004",
+    "S",
+    "SLF001",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["datamasque_cli"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = ["datamasque.*"]
+ignore_missing_imports = true
+# The library's __all__ doesn't list all public names,
+# and type signatures change between versions.
+follow_imports = "skip"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "integration: requires a running DataMasque instance (see README)",
+]
+addopts = "-m 'not integration'"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/datamasque_cli"]

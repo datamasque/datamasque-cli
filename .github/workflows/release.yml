@@ -1,0 +1,62 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build:
+    name: Build sdist and wheel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Verify tag matches package version
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PKG_VERSION="$(uv run python -c 'import tomllib,sys; print(tomllib.loads(open("pyproject.toml","rb").read().decode())["project"]["version"])')"
+          echo "Tag version:     ${TAG_VERSION}"
+          echo "Package version: ${PKG_VERSION}"
+          if [ "${TAG_VERSION}" != "${PKG_VERSION}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match pyproject.toml version ${PKG_VERSION}"
+            exit 1
+          fi
+
+      - name: Build
+        run: uv build
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 7
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/datamasque-cli
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
