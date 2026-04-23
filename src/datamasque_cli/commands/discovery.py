@@ -13,7 +13,7 @@ from datamasque.client.models.discovery import SchemaDiscoveryRequest
 from datamasque_cli.client import get_client
 from datamasque_cli.output import abort, print_json, print_success, render_output
 
-app = typer.Typer(help="Data discovery operations.")
+app = typer.Typer(help="Data discovery operations.", no_args_is_help=True)
 
 
 def _write_or_echo(content: str, output: Path | None, success_label: str) -> None:

@@ -10,7 +10,7 @@ from datamasque.client.models.ruleset_library import RulesetLibrary
 from datamasque_cli.client import get_client
 from datamasque_cli.output import abort, print_success, render_output
 
-app = typer.Typer(help="Manage ruleset libraries.")
+app = typer.Typer(help="Manage ruleset libraries.", no_args_is_help=True)
 
 
 @app.command("list")

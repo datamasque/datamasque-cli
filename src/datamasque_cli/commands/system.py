@@ -10,7 +10,7 @@ from datamasque_cli.client import get_client
 from datamasque_cli.commands.rulesets import export_bundle, import_bundle
 from datamasque_cli.output import print_json, print_success, print_warning, render_output
 
-app = typer.Typer(help="System administration commands.")
+app = typer.Typer(help="System administration commands.", no_args_is_help=True)
 
 
 @app.command()

@@ -10,7 +10,7 @@ from datamasque.client.models.files import SeedFile
 from datamasque_cli.client import get_client
 from datamasque_cli.output import abort, print_success, render_output
 
-app = typer.Typer(help="Manage seed files.")
+app = typer.Typer(help="Manage seed files.", no_args_is_help=True)
 
 
 @app.command("list")
