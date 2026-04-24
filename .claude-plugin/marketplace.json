@@ -1,0 +1,21 @@
+{
+  "name": "datamasque-tools",
+  "owner": { "name": "DataMasque" },
+  "plugins": [
+    {
+      "name": "datamasque-cli",
+      "source": "./claude-skills/datamasque-cli",
+      "description": "DataMasque command-line interface integration. Drive DataMasque from Claude Code: list connections, kick off runs, stream logs, download reports."
+    },
+    {
+      "name": "ruleset-builder",
+      "source": "./claude-skills/ruleset-builder",
+      "description": "Convert auto-generated DataMasque rulesets into production-ready form. Validate and iterate."
+    },
+    {
+      "name": "ruleset-splitter",
+      "source": "./claude-skills/ruleset-splitter",
+      "description": "Consolidate multi-file DataMasque rulesets for editing, then re-split them back out."
+    }
+  ]
+}

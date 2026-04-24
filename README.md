@@ -59,6 +59,26 @@ dm run logs 42 --follow
 `dm run start` and `dm run wait` block until the run finishes.
 Pass `--background` to `start` to skip the wait.
 
+## Claude Code skills
+
+The [`claude-skills/`](claude-skills/) directory ships three
+[Claude Code](https://claude.com/claude-code) plugins that drive `dm` on your behalf:
+
+- **`datamasque-cli`** — operate a DataMasque instance (start runs, list connections, fetch discovery reports).
+- **`ruleset-builder`** — turn auto-generated rulesets into production-ready ones.
+- **`ruleset-splitter`** — join many-file rulesets into one file for editing, then re-split.
+
+Install via the Claude Code plugin marketplace:
+
+```
+/plugin marketplace add datamasque/datamasque-cli
+/plugin install datamasque-cli@datamasque-tools
+/plugin install ruleset-builder@datamasque-tools
+/plugin install ruleset-splitter@datamasque-tools
+```
+
+See [`claude-skills/README.md`](claude-skills/README.md) for more.
+
 ## Shell completion
 
 `dm` provides built-in completion for bash, zsh, and fish:
