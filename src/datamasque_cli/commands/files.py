@@ -10,7 +10,7 @@ from datamasque.client.models.files import DataMasqueFile, SnowflakeKeyFile
 from datamasque_cli.client import get_client
 from datamasque_cli.output import abort, print_success, render_output
 
-app = typer.Typer(help="Manage uploaded files (Oracle wallets, Snowflake keys).")
+app = typer.Typer(help="Manage uploaded files (Oracle wallets, Snowflake keys).", no_args_is_help=True)
 
 # Map user-friendly type names to their classes.
 _FILE_TYPES: dict[str, type[DataMasqueFile]] = {

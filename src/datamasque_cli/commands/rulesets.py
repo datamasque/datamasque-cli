@@ -15,7 +15,7 @@ from datamasque.client.models.ruleset import Ruleset, RulesetType
 from datamasque_cli.client import get_client
 from datamasque_cli.output import abort, print_error, print_info, print_success, print_warning, render_output
 
-app = typer.Typer(help="Manage masking rulesets.")
+app = typer.Typer(help="Manage masking rulesets.", no_args_is_help=True)
 
 
 def _find_by_name(

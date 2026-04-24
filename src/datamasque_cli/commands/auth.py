@@ -13,7 +13,7 @@ from datamasque_cli.output import abort, print_info, print_success, print_table
 # login saves credentials even when the server is unreachable,
 # and status prints profile info before attempting connection.
 
-app = typer.Typer(help="Authentication and profile management.")
+app = typer.Typer(help="Authentication and profile management.", no_args_is_help=True)
 
 
 @app.command()

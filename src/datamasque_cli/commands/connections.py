@@ -41,7 +41,7 @@ def _format_role(conn: ConnectionConfig) -> str:
     return "—"
 
 
-app = typer.Typer(help="Manage database and file connections.")
+app = typer.Typer(help="Manage database and file connections.", no_args_is_help=True)
 
 # Maps the `type` field in JSON to the right config class.
 _CONNECTION_CLASSES = {

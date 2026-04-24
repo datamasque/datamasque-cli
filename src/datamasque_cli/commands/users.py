@@ -8,7 +8,7 @@ from datamasque.client.models.user import User, UserRole
 from datamasque_cli.client import get_client
 from datamasque_cli.output import abort, print_success, render_output
 
-app = typer.Typer(help="Manage users.")
+app = typer.Typer(help="Manage users.", no_args_is_help=True)
 
 
 @app.command("list")

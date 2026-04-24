@@ -25,7 +25,7 @@ from datamasque_cli.output import (
     style_status,
 )
 
-app = typer.Typer(help="Manage masking runs.")
+app = typer.Typer(help="Manage masking runs.", no_args_is_help=True)
 
 _POLL_INTERVAL_SECONDS = 5
 
