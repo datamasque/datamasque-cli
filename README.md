@@ -9,6 +9,7 @@ so teams can use production-shaped data in non-production environments without e
 DataMasque CLI `dm` covers:
 
 - connections, rulesets, ruleset libraries, and masking runs
+- in-flight masking (IFM) ruleset plans and on-demand mask requests
 - schema discovery and sensitive-data discovery
 - users, files, and DataMasque instance administration
 
@@ -164,6 +165,26 @@ dm libraries create --name <n> --file lib.yaml --namespace pii  # With namespace
 dm libraries delete <name>                        # Delete a library
 dm libraries validate <name>                      # Re-validate against current server schema
 dm libraries usage <name>                         # Show rulesets using it
+```
+
+### In-flight masking
+
+The IFM service runs alongside the admin server,
+reached at `<DataMasque URL>/ifm` via the standard nginx topology.
+
+```console
+dm ifm list                                            # List ruleset plans
+dm ifm get <name>                                      # Show plan metadata
+dm ifm get <name> --yaml                               # Print the ruleset YAML
+dm ifm create --name myplan --file rules.yaml          # Create (server suffixes a random string to the name)
+dm ifm create --name myplan --file rules.yaml --disabled --log-level DEBUG
+dm ifm update <name> --file rules.yaml                 # Replace the ruleset YAML
+dm ifm update <name> --enabled                         # Toggle without re-sending the YAML
+dm ifm update <name> --log-level INFO
+dm ifm delete <name> --yes                             # Delete a plan
+dm ifm mask <name> --data input.json                   # Mask a JSON list of records
+dm ifm mask <name> --data -                            # Read records from stdin
+dm ifm verify-token                                    # Show scopes granted to the current IFM token
 ```
 
 ### Masking runs

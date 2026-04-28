@@ -1,6 +1,6 @@
 [project]
 name = "datamasque-cli"
-version = "1.0.0"
+version = "1.1.0"
 description = "Official command-line interface for the DataMasque data-masking platform."
 authors = [
     { name = "DataMasque Ltd" },
