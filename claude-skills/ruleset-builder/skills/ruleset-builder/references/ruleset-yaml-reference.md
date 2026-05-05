@@ -72,6 +72,16 @@ For PostgreSQL/MySQL, plain names work: `table: users`, `key: id`.
 
 ## Mask Types Quick Reference
 
+This is the **closed list** of every `type:` value DataMasque accepts. Do
+not invent mask types or parameters (no `source_table`, no `link_to`, no
+`parent_column` — none exist). For per-mask parameter details, see the
+canonical source:
+<https://portal.datamasque.com/portal/documentation/latest/masking-functions-overview.html>.
+
+For a deterministic hash, use `imitate_unique` (or `imitate_uuid` for UUIDs)
+optionally with `seed:` to namespace. The cascade is automatic; no
+cross-table reference parameter exists. See `fk-cascade.md`.
+
 ### Generic
 - `from_fixed` — fixed replacement value
 - `from_column` — copy from another column
@@ -124,6 +134,20 @@ For PostgreSQL/MySQL, plain names work: `table: users`, `key: id`.
 ### Document
 - `json` — mask JSON fields within a column
 - `xml` — mask XML elements within a column
+- `unstructured_text` — mask entities inside free text
+
+### Commonly-hallucinated names that do NOT exist
+
+These plausible-sounding names are not in DataMasque. Refuse to emit them:
+
+| Hallucinated name                                           | What was wanted                   | Use instead                                                   |
+|-------------------------------------------------------------|-----------------------------------|---------------------------------------------------------------|
+| `hash_text`, `hash`                                         | deterministic hash of a value     | `imitate_unique` (or `imitate_uuid` for UUIDs)                |
+| `link`, `match_id`, `link_to`                               | join two columns after masking    | shared `imitate_unique` config on both sides                  |
+| `from_random_words`                                         | random words / short text         | `from_random_text` (random chars) or `from_file`              |
+| `from_random_string`                                        | random string                     | `from_random_text`                                            |
+| `redact`, `mask_value`                                      | constant placeholder              | `from_fixed` with `value:`                                    |
+| `source_table`, `source_column`, `parent_column`, `link_to` | param to point a FK at its parent | does not exist — cascade is automatic with shared mask config |
 
 ## skip_defaults
 
