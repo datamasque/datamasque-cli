@@ -1,4 +1,4 @@
-"""System-level commands: health, licence, logs, admin-install."""
+"""System administration commands."""
 
 from __future__ import annotations
 
@@ -116,3 +116,34 @@ def set_locality(
     client = get_client(profile)
     client.set_locality(locality)
     print_success(f"Locality set to '{locality}'.")
+
+
+ai_engine_app = typer.Typer(help="Configure the AI Engine.", no_args_is_help=True)
+app.add_typer(ai_engine_app, name="ai-engine")
+
+
+@ai_engine_app.command("show")
+def ai_engine_show(
+    profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
+    is_json: bool = typer.Option(False, "--json", help="Output as JSON"),
+) -> None:
+    """Show the configured AI Engine URL."""
+    client = get_client(profile)
+    response = client.make_request("GET", "/api/settings/")
+    url = response.json().get("dm_ai_engine_url") or None
+    if should_emit_json(is_json):
+        print_json({"dm_ai_engine_url": url})
+        return
+    # An empty table cell would look like a rendering bug.
+    render_output({"dm_ai_engine_url": url or "<not configured>"}, is_json=False, title="AI Engine")
+
+
+@ai_engine_app.command("set")
+def ai_engine_set(
+    url: str = typer.Argument(help="AI Engine base URL"),
+    profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
+) -> None:
+    """Point DataMasque at an AI Engine."""
+    client = get_client(profile)
+    client.make_request("PATCH", "/api/settings/", data={"dm_ai_engine_url": url})
+    print_success(f"AI Engine URL set to '{url}'.")

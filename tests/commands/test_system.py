@@ -36,3 +36,31 @@ def test_licence_projects_to_user_facing_fields(mock_get_client: MagicMock, runn
     assert '"platform_name": "DataMasque"' in result.stdout
     assert "switchable_license_metadata" not in result.stdout
     assert "license_source" not in result.stdout
+
+
+@patch(f"{MODULE}.get_client")
+def test_ai_engine_show_reads_url_from_settings(mock_get_client: MagicMock, runner: CliRunner) -> None:
+    client = MagicMock()
+    mock_get_client.return_value = client
+    response = MagicMock()
+    response.json.return_value = {"dm_ai_engine_url": "http://engine.example.com:9021"}
+    client.make_request.return_value = response
+
+    result = runner.invoke(app, ["system", "ai-engine", "show", "--json"])
+
+    assert result.exit_code == 0
+    client.make_request.assert_called_once_with("GET", "/api/settings/")
+    assert '"dm_ai_engine_url": "http://engine.example.com:9021"' in result.stdout
+
+
+@patch(f"{MODULE}.get_client")
+def test_ai_engine_set_patches_settings_with_url(mock_get_client: MagicMock, runner: CliRunner) -> None:
+    client = MagicMock()
+    mock_get_client.return_value = client
+
+    result = runner.invoke(app, ["system", "ai-engine", "set", "http://engine.example.com:9021"])
+
+    assert result.exit_code == 0
+    client.make_request.assert_called_once_with(
+        "PATCH", "/api/settings/", data={"dm_ai_engine_url": "http://engine.example.com:9021"}
+    )
