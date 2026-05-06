@@ -170,7 +170,7 @@ dm libraries usage <name>                         # Show rulesets using it
 ### In-flight masking
 
 The IFM service runs alongside the admin server,
-reached at `<DataMasque URL>/ifm` via the standard nginx topology.
+reached at `<DataMasque URL>/ifm`.
 
 ```console
 dm ifm list                                            # List ruleset plans
