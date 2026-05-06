@@ -14,17 +14,17 @@ Transform auto-generated DataMasque rulesets into production-ready rulesets with
 
 FK cascade is automatic: mask the parent PK with `imitate_unique` (or `imitate_uuid` / `imitate_nz_ird`) and the engine replicates the rule onto every FK column referencing it. **Do NOT add explicit rules for FK columns.** Avoid `from_unique_imitate` and `mask_unique_key` (both deprecated). Never skip IDs.
 
-5-step process (0–4). Use `TaskCreate` to track all 5; report after each step before proceeding. The prompt must include business domain and application type — ask if missing.
+5-step process (1–5). Use `TaskCreate` to track all 5; report after each step before proceeding. The prompt must include business domain and application type — ask if missing.
 
 ---
 
-## Step 0: Report versions
+## Step 1: Report versions
 
 Report the Ruleset Builder version (from `plugin.json`) and `dm version` so the operator can correlate output with releases.
 
 ---
 
-## Step 1: Read reference docs
+## Step 2: Read reference docs
 
 Canonical mask reference:
 <https://portal.datamasque.com/portal/documentation/latest/masking-functions-overview.html>
@@ -39,7 +39,7 @@ ${CLAUDE_PLUGIN_ROOT}/skills/ruleset-builder/references/ruleset-yaml-reference.m
 
 ---
 
-## Step 2: Extract ruleset_library
+## Step 3: Extract ruleset_library
 
 Write a Python script using `ruamel.yaml` (`uv pip install ruamel.yaml`).
 
@@ -65,27 +65,27 @@ masks:
 
 **2. Named patterns** — detect by mask structure:
 
-| Pattern | Detection | Library rule |
-|---------|-----------|--------------|
-| Email | `chain(concat(concat(firstName+lastName, glue='.')+email_suffix)+transform_case(lower))` | `email_address` |
-| Full name | `chain(concat(firstName+lastName, glue=' ')+take_substring)` OR plain `concat(firstName+lastName, glue=' ')` — column not containing USERNAME/LOGIN | `full_name` |
-| Username | Same mask as full_name but column name contains USERNAME, USER_NAME, LOGIN, LOGON | `username` |
-| First name only | `from_file` with firstNames seed | `name_first` |
-| Last name only | `from_file` with lastNames seed | `name_last` |
-| DOB | Column name contains DOB/BIRTH/DATE_OF_BIRTH — use `retain_age` regardless of original type | `dob` |
-| Company | `chain(from_file(companies)+take_substring)` | `company_name` |
-| Country name | `from_file(country_codes, seed_column=name)` | `country_name` |
-| Country alpha-2 | `from_file(country_codes, seed_column=alpha_2)` | `country_code_2` |
-| Country alpha-3 | `from_file(country_codes, seed_column=alpha_3)` | `country_code_3` |
-| Phone/fax | `imitate` on column name containing PHONE, TEL, FAX, MOBILE, CELL | `phone` |
-| Address line 1 | `from_file(addresses, seed_column=street_address)` on LINE_1/ADDRESS_LINE_1 columns | `address_line1` |
-| Address line N | Same for LINE_2, LINE_3 etc. | `address_lineN` |
-| Address full | `from_file(addresses, seed_column=street_address)` on non-line-numbered columns | `address_full` |
-| Address expr | `concat(address+city+state+postcode, glue=', ')` | `network_address_expr` |
-| City | `from_file(addresses, seed_column=city)` | `city` |
-| Postcode | `from_file(addresses, seed_column=postcode)` | `post_code` |
-| Suburb | `from_file(addresses, seed_column=suburb)` | `suburb` |
-| Occupation | `from_file(occupations)` | `occupation` |
+| Pattern         | Detection                                                                                                                                           | Library rule           |
+|-----------------|-----------------------------------------------------------------------------------------------------------------------------------------------------|------------------------|
+| Email           | `chain(concat(concat(firstName+lastName, glue='.')+email_suffix)+transform_case(lower))`                                                            | `email_address`        |
+| Full name       | `chain(concat(firstName+lastName, glue=' ')+take_substring)` OR plain `concat(firstName+lastName, glue=' ')` — column not containing USERNAME/LOGIN | `full_name`            |
+| Username        | Same mask as full_name but column name contains USERNAME, USER_NAME, LOGIN, LOGON                                                                   | `username`             |
+| First name only | `from_file` with firstNames seed                                                                                                                    | `name_first`           |
+| Last name only  | `from_file` with lastNames seed                                                                                                                     | `name_last`            |
+| DOB             | Column name contains DOB/BIRTH/DATE_OF_BIRTH — use `retain_age` regardless of original type                                                         | `dob`                  |
+| Company         | `chain(from_file(companies)+take_substring)`                                                                                                        | `company_name`         |
+| Country name    | `from_file(country_codes, seed_column=name)`                                                                                                        | `country_name`         |
+| Country alpha-2 | `from_file(country_codes, seed_column=alpha_2)`                                                                                                     | `country_code_2`       |
+| Country alpha-3 | `from_file(country_codes, seed_column=alpha_3)`                                                                                                     | `country_code_3`       |
+| Phone/fax       | `imitate` on column name containing PHONE, TEL, FAX, MOBILE, CELL                                                                                   | `phone`                |
+| Address line 1  | `from_file(addresses, seed_column=street_address)` on LINE_1/ADDRESS_LINE_1 columns                                                                 | `address_line1`        |
+| Address line N  | Same for LINE_2, LINE_3 etc.                                                                                                                        | `address_lineN`        |
+| Address full    | `from_file(addresses, seed_column=street_address)` on non-line-numbered columns                                                                     | `address_full`         |
+| Address expr    | `concat(address+city+state+postcode, glue=', ')`                                                                                                    | `network_address_expr` |
+| City            | `from_file(addresses, seed_column=city)`                                                                                                            | `city`                 |
+| Postcode        | `from_file(addresses, seed_column=postcode)`                                                                                                        | `post_code`            |
+| Suburb          | `from_file(addresses, seed_column=suburb)`                                                                                                          | `suburb`               |
+| Occupation      | `from_file(occupations)`                                                                                                                            | `occupation`           |
 
 **3. Remaining** — group by column name concept. Where column names share a root (e.g., `RESULT3_VALUE`, `RESULT5_VALUE` → `result_value`; `GENERAL_2`, `GENERAL_6` → `general`), use one shared rule. Strip adjective prefixes. Use first occurrence's parameters.
 
@@ -119,11 +119,11 @@ tasks:
 
 Do NOT write a custom YAML serializer. Use `ruamel.yaml` round-trip dumper. Use `DoubleQuotedScalarString` for `$ref` values.
 
-**Report:** "Step 2 done — extracted N rule library definitions: [list each name and usage count]."
+**Report:** "Step 3 done — extracted N rule library definitions: [list each name and usage count]."
 
 ---
 
-## Step 3: Add hash_columns
+## Step 4: Add hash_columns
 
 Write a Python script that:
 
@@ -149,11 +149,11 @@ Build a lookup of `(schema, table)` → columns with constraint and FK metadata:
 
 4. Write to output file
 
-**Report:** "Step 3 done — added hash_columns to N tables, skipped M (all-unique), skipped K (no suitable key). Top hash columns: [column → count]."
+**Report:** "Step 4 done — added hash_columns to N tables, skipped M (all-unique), skipped K (no suitable key). Top hash columns: [column → count]."
 
 ---
 
-## Step 4: Validate and clean up
+## Step 5: Validate and clean up
 
 Remove any comment lines containing `ROWID`.
 
@@ -166,11 +166,11 @@ Fix any errors and re-validate until passing.
 
 ## Summary
 
-| Metric | Value |
-|--------|-------|
-| Total tables | N |
+| Metric                     | Value          |
+|----------------------------|----------------|
+| Total tables               | N              |
 | Mask definitions extracted | N (list names) |
-| Tables with hash_columns | N |
-| Tables skipped (no key) | N |
-| Validation | passed/failed |
-| Output file | path |
+| Tables with hash_columns   | N              |
+| Tables skipped (no key)    | N              |
+| Validation                 | passed/failed  |
+| Output file                | path           |
