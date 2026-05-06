@@ -71,14 +71,14 @@ hash_columns:
 
 Every table belongs to a domain entity. Find the column that identifies that entity:
 
-| Domain | Typical hash column | Examples |
-|--------|-------------------|----------|
-| Customer | `cust_id`, `customer_id`, `client_id` | CUST_MASTER, CUST_ADDRESS |
-| Account | `acc_id`, `account_id`, `account_no` | DEP_ACCOUNT, DEP_EMAIL_ALERT |
-| Card | `card_id`, `card_no` | CARD_MASTER, CARD_INSURANCE |
-| Loan | `loan_id`, `loan_no` | LOAN_COLLATERAL, LOAN_GUARANTOR |
-| Employee | `emp_id`, `emp_no`, `employee_id` | COM_EMPLOYEE, COM_EMP_ROLE |
-| Transaction | `tx_id`, `trf_id`, `fx_tx_id` | TRF_MASTER, FX_RECEIPT |
+| Domain      | Typical hash column                   | Examples                        |
+|-------------|---------------------------------------|---------------------------------|
+| Customer    | `cust_id`, `customer_id`, `client_id` | CUST_MASTER, CUST_ADDRESS       |
+| Account     | `acc_id`, `account_id`, `account_no`  | DEP_ACCOUNT, DEP_EMAIL_ALERT    |
+| Card        | `card_id`, `card_no`                  | CARD_MASTER, CARD_INSURANCE     |
+| Loan        | `loan_id`, `loan_no`                  | LOAN_COLLATERAL, LOAN_GUARANTOR |
+| Employee    | `emp_id`, `emp_no`, `employee_id`     | COM_EMPLOYEE, COM_EMP_ROLE      |
+| Transaction | `tx_id`, `trf_id`, `fx_tx_id`         | TRF_MASTER, FX_RECEIPT          |
 
 ### Step 2: Check foreign keys in the DDL
 

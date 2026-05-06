@@ -175,14 +175,14 @@ tasks:
 
 Common seed files for `from_file` masks:
 
-| Category | Files |
-|----------|-------|
-| Names | `DataMasque_firstNames_mixed.csv`, `DataMasque_lastNames_v2.csv` |
+| Category  | Files                                                                                                 |
+|-----------|-------------------------------------------------------------------------------------------------------|
+| Names     | `DataMasque_firstNames_mixed.csv`, `DataMasque_lastNames_v2.csv`                                      |
 | Addresses | `DataMasque_US_addresses.csv`, `DataMasque_AU_addresses_real.csv`, `DataMasque_NZ_addresses_real.csv` |
-| Companies | `DataMasque_companies.csv`, `DataMasque_NZ_companies.csv`, `DataMasque_AU_companies.csv` |
-| Email | `DataMasque_fake_email_suffixes.csv`, `DataMasque_email_suffixes.csv` |
-| Reference | `DataMasque_country_codes.csv`, `DataMasque_occupations.csv` |
-| Cards | `DataMasque_credit_card_numbers.csv`, `DataMasque_credit_card_prefixes.csv` |
+| Companies | `DataMasque_companies.csv`, `DataMasque_NZ_companies.csv`, `DataMasque_AU_companies.csv`              |
+| Email     | `DataMasque_fake_email_suffixes.csv`, `DataMasque_email_suffixes.csv`                                 |
+| Reference | `DataMasque_country_codes.csv`, `DataMasque_occupations.csv`                                          |
+| Cards     | `DataMasque_credit_card_numbers.csv`, `DataMasque_credit_card_prefixes.csv`                           |
 
 Regional variants exist for BR, IN, AU, NZ, US.
 Use `from_file` when there are more than ~50 distinct values;
