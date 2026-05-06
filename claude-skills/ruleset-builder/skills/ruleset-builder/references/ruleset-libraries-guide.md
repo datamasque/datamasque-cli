@@ -143,13 +143,13 @@ tasks: [...]
 
 ## Libraries vs YAML Anchors
 
-| Feature | YAML Anchors (`&`/`*`) | Libraries (`$ref`) |
-|---------|----------------------|-------------------|
-| Scope | Within one ruleset | Across multiple rulesets |
-| Management | Inline in YAML | Managed via API/CLI, versioned |
-| Syntax | `<<: *anchor_name` | `$ref: "lib#path"` |
-| Override | `<<:` merge key | Not supported (use as-is) |
-| Best for | Single-ruleset reuse | Organisation-wide standards |
+| Feature    | YAML Anchors (`&`/`*`) | Libraries (`$ref`)             |
+|------------|------------------------|--------------------------------|
+| Scope      | Within one ruleset     | Across multiple rulesets       |
+| Management | Inline in YAML         | Managed via API/CLI, versioned |
+| Syntax     | `<<: *anchor_name`     | `$ref: "lib#path"`             |
+| Override   | `<<:` merge key        | Not supported (use as-is)      |
+| Best for   | Single-ruleset reuse   | Organisation-wide standards    |
 
 **Recommendation:**
 - Start with YAML anchors (`mask_definitions`) for within-ruleset deduplication
