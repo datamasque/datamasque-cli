@@ -248,6 +248,8 @@ dm system upload-licence ./licence.lic          # Upload a licence file
 dm system logs -o logs.tar.gz                   # Download application logs
 dm system admin-install --email admin@co.com    # Initial admin setup
 dm system set-locality AU                       # Set system locality
+dm system ai-engine show                        # Show the configured AI Engine URL
+dm system ai-engine set <URL>                   # Point DataMasque at an AI Engine
 ```
 
 ## JSON output

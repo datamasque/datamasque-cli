@@ -1,6 +1,6 @@
 ---
 name: datamasque-cli
-description: Use when the user wants to interact with a DataMasque instance — start masking runs, check run status, list connections or rulesets, manage seeds, manage ruleset libraries, check system health, or any task involving the DataMasque API. Triggers on "mask the data", "start a run", "check the run", "list connections", "list rulesets", "upload a seed", "check DataMasque health", "dm status", "ruleset library", or any request to operate DataMasque programmatically.
+description: Use when the user wants to interact with a DataMasque instance — start masking runs, check run status, list connections or rulesets, manage seeds, manage ruleset libraries, check system health, configure the AI Engine, or any task involving the DataMasque API. Triggers on "mask the data", "start a run", "check the run", "list connections", "list rulesets", "upload a seed", "check DataMasque health", "dm status", "ruleset library", "configure the AI Engine", "set the AI Engine URL", or any request to operate DataMasque programmatically.
 argument-hint: e.g. "start a run with docx_masking on var_input_docx"
 user-invocable: true
 ---
