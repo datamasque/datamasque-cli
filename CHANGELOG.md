@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v1.3.0
+
 ### Added
 - `dm system ai-engine show` and `dm system ai-engine set <URL>` — view and
   configure the AI Engine URL.
