@@ -41,6 +41,50 @@ uv sync
 Then either activate the venv (`source .venv/bin/activate`)
 or prefix commands with `uv run`.
 
+## Running `dm` locally
+
+`uv sync` installs the CLI in editable mode,
+so the `dm` entry point on the venv reflects your working tree —
+no reinstall after each edit.
+
+```console
+uv run dm --version              # one-shot, no venv activation needed
+source .venv/bin/activate && dm --version   # or activate once per shell
+```
+
+Point it at a DataMasque instance.
+For ad-hoc development, env vars are the lowest-friction path
+(no `~/.config/datamasque-cli/config.toml` to clean up afterwards):
+
+```console
+export DATAMASQUE_URL=http://127.0.0.1:8000
+export DATAMASQUE_USERNAME=admin
+export DATAMASQUE_PASSWORD='P@ssword12'
+export DATAMASQUE_VERIFY_SSL=false   # for self-signed local builds
+dm system health
+dm connections list
+```
+
+For longer-lived work, save a profile with `dm auth login`
+(stored at `~/.config/datamasque-cli/config.toml`, mode 600).
+
+### Pairing with a local `datamasque-python` checkout
+
+`datamasque-cli` depends on the `datamasque-python` package
+for its actual API client.
+If you're changing both repos at once
+(for example, adding a new endpoint that needs a CLI surface),
+install the sibling checkout in editable mode against the CLI's venv:
+
+```console
+uv pip install -e ../datamasque-python
+```
+
+The dependency is satisfied by the local checkout
+and edits to either repo are picked up immediately by `dm`.
+A subsequent `uv sync` will re-pin to the registered version —
+re-run the `uv pip install -e` if you want the local override back.
+
 ## Running the tests
 
 ```console
