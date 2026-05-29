@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
+from datamasque.client.exceptions import DataMasqueApiError
 from datamasque.client.models.license import LicenseInfo, SwitchableLicenseMetadata
 from typer.testing import CliRunner
 
@@ -80,3 +81,106 @@ def test_ai_engine_set_patches_settings_with_url(mock_get_client: MagicMock, run
     client.make_request.assert_called_once_with(
         "PATCH", "/api/settings/", data={"dm_ai_engine_url": "http://engine.example.com:9021"}
     )
+
+
+# Commands that hit anonymous endpoints must use `get_unauthenticated_client`, not `get_client`.
+# Using `get_client` would call `authenticate()` first, which always fails on a fresh server
+# (no admin user yet → 401 → SystemExit) and never reaches the actual endpoint.
+
+
+@patch(f"{MODULE}.get_unauthenticated_client")
+@patch(f"{MODULE}.get_client")
+def test_admin_install_uses_unauthenticated_client(
+    mock_get_client: MagicMock, mock_get_unauth: MagicMock, runner: CliRunner
+) -> None:
+    client = MagicMock()
+    mock_get_unauth.return_value = client
+
+    result = runner.invoke(
+        app,
+        [
+            "system", "admin-install",
+            "--email", "admin@example.com",
+            "--username", "admin",
+            "--password", "P@ssword12",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    mock_get_unauth.assert_called_once()
+    mock_get_client.assert_not_called()
+    client.admin_install.assert_called_once_with(
+        email="admin@example.com", username="admin", password="P@ssword12"
+    )
+
+
+@patch(f"{MODULE}.get_unauthenticated_client")
+def test_admin_install_translates_401_into_conflict(
+    mock_get_unauth: MagicMock, runner: CliRunner
+) -> None:
+    """A 401 from /api/users/admin-install/ means the instance is already set up.
+
+    Translate the raw API error into a user-facing conflict message instead of
+    letting the misleading "Unable to login" traceback bubble up.
+    """
+    client = MagicMock()
+    mock_get_unauth.return_value = client
+    response = MagicMock()
+    response.status_code = 401
+    client.admin_install.side_effect = DataMasqueApiError("401 Unauthorized", response=response)
+
+    result = runner.invoke(
+        app,
+        [
+            "system", "admin-install",
+            "--email", "admin@example.com",
+            "--username", "admin",
+            "--password", "P@ssword12",
+        ],
+    )
+
+    assert result.exit_code == 8  # ErrorCode.CONFLICT
+    assert "already complete" in result.stderr
+    assert "dm auth login" in result.stderr
+
+
+@patch(f"{MODULE}.get_unauthenticated_client")
+def test_admin_install_does_not_swallow_non_401_errors(
+    mock_get_unauth: MagicMock, runner: CliRunner
+) -> None:
+    """Only 401 is the "already installed" signal -- other errors must surface."""
+    client = MagicMock()
+    mock_get_unauth.return_value = client
+    response = MagicMock()
+    response.status_code = 400
+    client.admin_install.side_effect = DataMasqueApiError("400 Bad Request", response=response)
+
+    result = runner.invoke(
+        app,
+        [
+            "system", "admin-install",
+            "--email", "admin@example.com",
+            "--username", "admin",
+            "--password", "weak",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "already complete" not in result.stderr
+
+
+@patch(f"{MODULE}.get_unauthenticated_client")
+@patch(f"{MODULE}.get_client")
+def test_health_uses_unauthenticated_client(
+    mock_get_client: MagicMock, mock_get_unauth: MagicMock, runner: CliRunner
+) -> None:
+    client = MagicMock()
+    mock_get_unauth.return_value = client
+
+    result = runner.invoke(app, ["system", "health", "--json"])
+
+    assert result.exit_code == 0, result.output
+    mock_get_unauth.assert_called_once()
+    mock_get_client.assert_not_called()
+    client.healthcheck.assert_called_once_with()
+    assert '"status": "healthy"' in result.stdout
