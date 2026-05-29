@@ -2,13 +2,23 @@
 
 from __future__ import annotations
 
+from http import HTTPStatus
 from pathlib import Path
 
 import typer
+from datamasque.client.exceptions import DataMasqueApiError
 
-from datamasque_cli.client import get_client
+from datamasque_cli.client import get_client, get_unauthenticated_client
 from datamasque_cli.commands.rulesets import export_bundle, import_bundle
-from datamasque_cli.output import print_json, print_success, print_warning, render_output, should_emit_json
+from datamasque_cli.output import (
+    ErrorCode,
+    abort,
+    print_json,
+    print_success,
+    print_warning,
+    render_output,
+    should_emit_json,
+)
 
 app = typer.Typer(help="System administration commands.", no_args_is_help=True)
 
@@ -18,8 +28,14 @@ def health(
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
     is_json: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
-    """Check DataMasque instance health."""
-    client = get_client(profile)
+    """Check DataMasque instance health.
+
+    Uses an unauthenticated client because `/api/healthcheck/` does not require a
+    token and should answer even when no admin user has been created yet --
+    the whole point of a health probe is to be the lowest-friction signal of
+    "is the server up?"
+    """
+    client = get_unauthenticated_client(profile)
     client.healthcheck()
 
     if should_emit_json(is_json):
@@ -101,9 +117,24 @@ def admin_install(
     password: str = typer.Option(..., prompt=True, hide_input=True, help="Admin password"),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
-    """Initial admin setup for a fresh DataMasque instance."""
-    client = get_client(profile)
-    client.admin_install(email=email, username=username, password=password)
+    """Initial admin setup for a fresh DataMasque instance.
+
+    Uses an unauthenticated client because the admin-install endpoint is itself
+    anonymous and on a fresh server there's no user account to authenticate as.
+    """
+    client = get_unauthenticated_client(profile)
+    try:
+        client.admin_install(email=email, username=username, password=password)
+    except DataMasqueApiError as e:
+        # The server returns 401 on /api/users/admin-install/ once any user exists
+        # DataMasque treats it as a normal auth-required endpoint after that
+        if e.response.status_code == HTTPStatus.UNAUTHORIZED:
+            abort(
+                "Admin install is already complete on this DataMasque instance.",
+                code=ErrorCode.CONFLICT,
+                hint="Use `dm auth login` to sign in as an existing user.",
+            )
+        raise
     print_success(f"Admin user '{username}' created.")
 
 
