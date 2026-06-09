@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import time
 from datetime import UTC, datetime
+from http import HTTPStatus
 from pathlib import Path
 
 import typer
@@ -30,8 +31,6 @@ from datamasque_cli.output import (
 app = typer.Typer(help="Manage masking runs.", no_args_is_help=True)
 
 _POLL_INTERVAL_SECONDS = 5
-
-_HTTP_NOT_FOUND = 404
 
 
 def _format_run_info(run: RunInfo, *, is_styled: bool = False) -> dict[str, object]:
@@ -350,7 +349,7 @@ def run_report(
         # `GET .../run-report/` 404s for runs that didn't produce one
         # (still in flight, failed early, or a run type that doesn't emit a
         # report). The default error string is opaque, so name the cause.
-        if exc.response is not None and exc.response.status_code == _HTTP_NOT_FOUND:
+        if exc.response is not None and exc.response.status_code == HTTPStatus.NOT_FOUND:
             abort(
                 f"No report available for run {run_id}.",
                 code=ErrorCode.NOT_FOUND,

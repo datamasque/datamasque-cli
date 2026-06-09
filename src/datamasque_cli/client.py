@@ -48,6 +48,25 @@ def profile_from_env() -> Profile | None:
     return None
 
 
+def _profile_from_env_url_only() -> Profile | None:
+    """Build a URL-only profile from `DATAMASQUE_URL`, with empty username/password.
+
+    Used by the unauthenticated client factory so callers can hit anonymous
+    endpoints (admin-install, health) without setting `DATAMASQUE_USERNAME`
+    and `DATAMASQUE_PASSWORD` -- those fields aren't read by anonymous calls
+    and demanding them is friction for the first-run setup workflow.
+    """
+    url = os.environ.get(ENV_URL)
+    if not url:
+        return None
+    return Profile(
+        url=url.rstrip("/"),
+        username="",
+        password="",
+        verify_ssl=_verify_ssl_from_env(default=True),
+    )
+
+
 def _resolve_profile(config: Config, profile_name: str | None) -> Profile:
     profile = config.get_profile(profile_name)
     if not profile.is_configured:
@@ -56,6 +75,25 @@ def _resolve_profile(config: Config, profile_name: str | None) -> Profile:
             f"Profile '{name}' is not configured.",
             code=ErrorCode.AUTH_REQUIRED,
             hint=(f"Run: dm auth login --profile {name} or set {ENV_URL}, {ENV_USERNAME}, and {ENV_PASSWORD}."),
+        )
+    return profile
+
+
+def _resolve_profile_for_unauthenticated(profile_name: str | None) -> Profile:
+    """Resolve a profile for an unauthenticated call -- only the URL is required.
+
+    Order: explicit `--profile`, env vars (URL-only is sufficient here),
+    saved active profile. If none yield a URL, abort with a clear hint.
+    """
+    if profile_name is not None:
+        profile = load_config().get_profile(profile_name)
+    else:
+        profile = _profile_from_env_url_only() or load_config().get_profile()
+    if not profile.url:
+        abort(
+            "No DataMasque URL configured.",
+            code=ErrorCode.AUTH_REQUIRED,
+            hint=f"Set {ENV_URL} or run: dm auth login",
         )
     return profile
 
@@ -98,6 +136,35 @@ def get_client(profile_name: str | None = None) -> DataMasqueClient:
     `DATAMASQUE_VERIFY_SSL` always wins over the stored profile so you can
     flip TLS verification per-call without re-running `dm auth login`.
     """
+    client, profile, verify_ssl = _build_client(profile_name)
+    _authenticate_or_abort(client, profile.url, verify_ssl=verify_ssl)
+    return client
+
+
+def get_unauthenticated_client(profile_name: str | None = None) -> DataMasqueClient:
+    """Build a `DataMasqueClient` without performing the up-front login handshake.
+
+    Used by commands that hit endpoints which don't require — or can't yet
+    use — a token. `admin-install` is the canonical example: on a fresh
+    server there's no user to authenticate as, so `client.authenticate()`
+    would always fail before the command ran.
+
+    Only `DATAMASQUE_URL` (or a profile with a URL) is required — username
+    and password aren't read by anonymous endpoints, so demanding them
+    would be unnecessary friction for first-run setup.
+    """
+    profile = _resolve_profile_for_unauthenticated(profile_name)
+    verify_ssl = _verify_ssl_from_env(default=profile.verify_ssl)
+    instance_config = DataMasqueInstanceConfig(
+        base_url=profile.url,
+        username=profile.username,
+        password=profile.password,
+        verify_ssl=verify_ssl,
+    )
+    return DataMasqueClient(instance_config)
+
+
+def _build_client(profile_name: str | None) -> tuple[DataMasqueClient, Profile, bool]:
     profile, verify_ssl = _resolve_profile_with_verify(profile_name)
     instance_config = DataMasqueInstanceConfig(
         base_url=profile.url,
@@ -105,10 +172,7 @@ def get_client(profile_name: str | None = None) -> DataMasqueClient:
         password=profile.password,
         verify_ssl=verify_ssl,
     )
-
-    client = DataMasqueClient(instance_config)
-    _authenticate_or_abort(client, profile.url, verify_ssl=verify_ssl)
-    return client
+    return DataMasqueClient(instance_config), profile, verify_ssl
 
 
 # Substrings that suggest the underlying error was a TLS failure rather than
