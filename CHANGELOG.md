@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.4.0
+
+### Added
+- `dm connections create --file` now supports Databricks SQL Warehouse
+  (`"type": "databricks"`) and MongoDB (`"type": "mongodb"`) connections.
+  Both list, get, create, and delete like the existing connection types.
+
 ## v1.3.0
 
 ### Added
