@@ -37,7 +37,7 @@ def test_sdd_report_echoes_to_stdout_without_output(mock_get_client: MagicMock, 
 
 
 @patch(f"{MODULE}.get_client")
-def test_db_report_writes_to_output_file(mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path) -> None:
+def test_db_report_writes_csv_to_output_file(mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path) -> None:
     client = MagicMock()
     mock_get_client.return_value = client
     client.get_db_discovery_result_report.return_value = "header\nrow1\n"
@@ -47,6 +47,33 @@ def test_db_report_writes_to_output_file(mock_get_client: MagicMock, runner: Cli
 
     assert result.exit_code == 0
     assert out.read_text() == "header\nrow1\n"
+
+
+@patch(f"{MODULE}.get_client")
+def test_db_report_writes_zip_when_split(mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path) -> None:
+    client = MagicMock()
+    mock_get_client.return_value = client
+    zip_bytes = b"PK\x03\x04 fake zip bytes"
+    client.get_db_discovery_result_report.return_value = zip_bytes
+
+    out = tmp_path / "report.2026.06"
+    result = runner.invoke(app, ["discover", "db-report", "42", "--output", str(out)])
+
+    assert result.exit_code == 0
+    assert not out.exists()
+    assert (tmp_path / "report.2026.06.zip").read_bytes() == zip_bytes
+
+
+@patch(f"{MODULE}.get_client")
+def test_db_report_split_without_output_aborts(mock_get_client: MagicMock, runner: CliRunner) -> None:
+    client = MagicMock()
+    mock_get_client.return_value = client
+    client.get_db_discovery_result_report.return_value = b"PK\x03\x04 fake zip bytes"
+
+    result = runner.invoke(app, ["discover", "db-report", "42"])
+
+    assert result.exit_code != 0
+    assert "-o" in result.stderr
 
 
 @patch(f"{MODULE}.get_client")
