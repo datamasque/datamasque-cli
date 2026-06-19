@@ -13,7 +13,9 @@ from datamasque.client.models.connection import (
     ConnectionConfig,
     DatabaseConnectionConfig,
     DatabaseType,
+    DatabricksConnectionConfig,
     DynamoConnectionConfig,
+    MongoConnectionConfig,
     MountedShareConnectionConfig,
     S3ConnectionConfig,
     SnowflakeConnectionConfig,
@@ -37,6 +39,8 @@ class ConnectionType(StrEnum):
     MOUNTED_SHARE = "mounted_share"
     SNOWFLAKE = "snowflake"
     DYNAMODB = "dynamodb"
+    DATABRICKS = "databricks"
+    MONGODB = "mongodb"
 
 
 _FILE_CONNECTION_TYPES = (MountedShareConnectionConfig, S3ConnectionConfig, AzureConnectionConfig)
@@ -69,6 +73,8 @@ _CONNECTION_CLASSES: dict[ConnectionType, type[ConnectionConfig]] = {
     ConnectionType.MOUNTED_SHARE: MountedShareConnectionConfig,
     ConnectionType.SNOWFLAKE: SnowflakeConnectionConfig,
     ConnectionType.DYNAMODB: DynamoConnectionConfig,
+    ConnectionType.DATABRICKS: DatabricksConnectionConfig,
+    ConnectionType.MONGODB: MongoConnectionConfig,
 }
 
 
@@ -131,7 +137,9 @@ def get_connection(
 def create_connection(
     file: Path | None = typer.Option(None, "--file", "-f", help="JSON file defining the connection"),
     name: str | None = typer.Option(None, help="Connection name"),
-    conn_type: str | None = typer.Option(None, "--type", "-t", help="database, s3, azure, mounted_share"),
+    conn_type: str | None = typer.Option(
+        None, "--type", "-t", help="database, s3, azure, mounted_share, snowflake, dynamodb, databricks, mongodb"
+    ),
     host: str | None = typer.Option(None, help="Database host"),
     port: str | None = typer.Option(None, help="Database port"),
     database: str | None = typer.Option(None, help="Database name"),
@@ -160,6 +168,11 @@ def create_connection(
 
         # Quick mounted share
         dm connections create --name input --type mounted_share --base-dir my-data --source
+
+        # Databricks, MongoDB, Snowflake and DynamoDB have many fields, so use --file:
+        #   {"type": "databricks", "name": "dbx", "server_hostname": "...", "http_path": "...",
+        #    "access_token": "...", "catalog": "main", "schema": "default"}
+        dm connections create --file databricks.json
     """
     client = get_client(profile)
 

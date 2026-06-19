@@ -7,6 +7,8 @@ import pytest
 from datamasque.client.models.connection import (
     DatabaseConnectionConfig,
     DatabaseType,
+    DatabricksConnectionConfig,
+    MongoConnectionConfig,
     MountedShareConnectionConfig,
 )
 from typer.testing import CliRunner
@@ -162,6 +164,64 @@ def test_create_connection_from_json_file(mock_get_client: MagicMock, runner: Cl
     result = runner.invoke(app, ["connections", "create", "--file", str(conn_file)])
     assert result.exit_code == 0
     client.create_or_update_connection.assert_called_once()
+
+
+@patch(f"{MODULE}.get_client")
+def test_create_databricks_connection_from_json_file(
+    mock_get_client: MagicMock, runner: CliRunner, tmp_path: MagicMock
+) -> None:
+    client = MagicMock()
+    mock_get_client.return_value = client
+
+    conn_file = tmp_path / "dbx.json"
+    conn_file.write_text(
+        json.dumps(
+            {
+                "type": "databricks",
+                "name": "dbx",
+                "server_hostname": "dbc-1514b142-1c6c.cloud.databricks.com",
+                "http_path": "/sql/1.0/warehouses/ea7d918dd5f236f9",
+                "access_token": "dapiTOKEN",
+                "catalog": "main",
+                "schema": "default",
+            }
+        )
+    )
+
+    result = runner.invoke(app, ["connections", "create", "--file", str(conn_file)])
+    assert result.exit_code == 0
+    config = client.create_or_update_connection.call_args.args[0]
+    assert isinstance(config, DatabricksConnectionConfig)
+    assert config.db_type == "databricks"
+
+
+@patch(f"{MODULE}.get_client")
+def test_create_mongodb_connection_from_json_file(
+    mock_get_client: MagicMock, runner: CliRunner, tmp_path: MagicMock
+) -> None:
+    client = MagicMock()
+    mock_get_client.return_value = client
+
+    conn_file = tmp_path / "mongo.json"
+    conn_file.write_text(
+        json.dumps(
+            {
+                "type": "mongodb",
+                "name": "mongo",
+                "host": "localhost",
+                "port": "27017",
+                "database": "mydb",
+                "user": "admin",
+                "password": "secret",
+            }
+        )
+    )
+
+    result = runner.invoke(app, ["connections", "create", "--file", str(conn_file)])
+    assert result.exit_code == 0
+    config = client.create_or_update_connection.call_args.args[0]
+    assert isinstance(config, MongoConnectionConfig)
+    assert config.db_type == "mongodb"
 
 
 # -- delete (tests confirmation logic) ------------------------------------
