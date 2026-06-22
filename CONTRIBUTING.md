@@ -217,42 +217,75 @@ and so on.
 
 ## Releasing
 
-The version is derived from the Git tag at build time (`hatch-vcs`),
-so there is nothing to bump by hand.
-To cut a release:
+A release is a Git tag.
+The version is derived from that tag at build time by `hatch-vcs`,
+so there is no version field to edit
+and nothing is committed to `main` to cut a release.
 
-1. On GitHub, open **Releases**, then **Draft a new release**.
-2. Choose a new tag in `vX.Y.Z` form (semver, `v`-prefixed), for example `v1.4.1`.
-3. Click **Generate release notes**, then **Publish release**.
+Tags are semver, `v`-prefixed, in `vMAJOR.MINOR.PATCH` form,
+for example `v1.4.1`.
 
-From the terminal this is:
+### Cut a release
+
+Pick the change level and run one of:
+
+```console
+make release-patch   # latest tag + 0.0.1: bug fixes only
+make release-minor   # latest tag + 0.1.0: backwards-compatible features
+make release-major   # latest tag + 1.0.0: breaking changes
+```
+
+Each target reads the latest `vX.Y.Z` tag,
+works out the next version,
+asks you to confirm,
+then creates the GitHub release through `gh`.
+Because it only creates a tag,
+the `main` branch ruleset does not block it.
+
+To pick the number yourself, the same thing from the terminal is:
 
 ```console
 gh release create v1.4.1 --generate-notes
 ```
 
-Or, to bump from the latest tag without picking the number yourself:
+Or from the browser:
+open **Releases**, then **Draft a new release**,
+choose the new `vX.Y.Z` tag,
+click **Generate release notes**,
+then **Publish release**.
 
-```console
-make release-patch   # latest tag + 0.0.1 — bug fixes
-make release-minor   # latest tag + 0.1.0 — new features
-make release-major   # latest tag + 1.0.0 — breaking changes
-```
+### What happens after you tag
 
-These read the latest `vX.Y.Z` tag, confirm the next one, and create the release
-through `gh`. Nothing is committed to `main`, so the branch ruleset does not
-block them.
+Publishing the tag triggers the `Release` workflow
+(`.github/workflows/release.yml`), which:
 
-Publishing the tag triggers the `Release` workflow,
-which builds the sdist and wheel
-and uploads them to PyPI via trusted publishing (OIDC).
+1. validates the tag is well-formed and is the newest release tag,
+   refusing to publish a malformed or out-of-order version;
+2. builds the sdist and wheel with `uv build`,
+   stamped with the tag version;
+3. publishes them to PyPI via trusted publishing (OIDC),
+   so no API token is stored in the repo.
 
-Release notes are grouped from the pull requests merged since the previous
-release, by label (see `.github/release.yml`),
-so give pull requests clear titles and labels.
+A published version is immutable:
+PyPI will not let you re-upload or reuse a version number,
+so a wrong tag means abandoning that number and tagging the next one.
 
-To smoke-test a build against TestPyPI without releasing,
-trigger the `Release (TestPyPI)` workflow manually from the Actions tab.
+### Release notes
+
+GitHub generates the notes from the pull requests
+merged since the previous release,
+grouped by label (see `.github/release.yml`):
+Features, Bug Fixes, Documentation, then everything else.
+Give each pull request a clear title and an appropriate label
+so the notes read well.
+
+### Smoke-testing a build
+
+To exercise a build without releasing,
+trigger the `Release (TestPyPI)` workflow by hand from the **Actions** tab.
+An untagged build is versioned as a development release,
+for example `1.4.1.dev3`,
+which carries no local version segment and so uploads cleanly.
 
 ## Toolchain
 
