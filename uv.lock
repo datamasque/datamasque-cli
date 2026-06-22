@@ -141,7 +141,6 @@ wheels = [
 
 [[package]]
 name = "datamasque-cli"
-version = "1.4.0"
 source = { editable = "." }
 dependencies = [
     { name = "datamasque-python" },
