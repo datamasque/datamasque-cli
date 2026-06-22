@@ -217,22 +217,30 @@ and so on.
 
 ## Releasing
 
-Releases are published automatically by CI when a version tag is pushed.
+The version is derived from the Git tag at build time (`hatch-vcs`),
+so there is nothing to bump by hand.
+To cut a release:
+
+1. On GitHub, open **Releases**, then **Draft a new release**.
+2. Choose a new tag in `vX.Y.Z` form (semver, `v`-prefixed), for example `v1.4.1`.
+3. Click **Generate release notes**, then **Publish release**.
+
+From the terminal this is:
 
 ```console
-make release-patch   # 0.1.0 → 0.1.1 — bug fixes
-make release-minor   # 0.1.0 → 0.2.0 — new features
-make release-major   # 0.1.0 → 1.0.0 — breaking changes
+gh release create v1.4.1 --generate-notes
 ```
 
-Each target runs `make check`,
-bumps the version in `pyproject.toml`,
-refreshes `uv.lock`,
-commits, tags, and pushes.
-CI handles the publish to PyPI.
+Publishing the tag triggers the `Release` workflow,
+which builds the sdist and wheel
+and uploads them to PyPI via trusted publishing (OIDC).
 
-To smoke-test a release against TestPyPI without tagging,
-trigger the `Release (TestPyPI)` workflow manually from the GitHub Actions tab.
+Release notes are grouped from the pull requests merged since the previous
+release, by label (see `.github/release.yml`),
+so give pull requests clear titles and labels.
+
+To smoke-test a build against TestPyPI without releasing,
+trigger the `Release (TestPyPI)` workflow manually from the Actions tab.
 
 ## Toolchain
 
