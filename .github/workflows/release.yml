@@ -11,6 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v5
@@ -19,17 +21,6 @@ jobs:
 
       - name: Set up Python
         run: uv python install 3.12
-
-      - name: Verify tag matches package version
-        run: |
-          TAG_VERSION="${GITHUB_REF_NAME#v}"
-          PKG_VERSION="$(uv run python -c 'import tomllib,sys; print(tomllib.loads(open("pyproject.toml","rb").read().decode())["project"]["version"])')"
-          echo "Tag version:     ${TAG_VERSION}"
-          echo "Package version: ${PKG_VERSION}"
-          if [ "${TAG_VERSION}" != "${PKG_VERSION}" ]; then
-            echo "::error::Tag ${GITHUB_REF_NAME} does not match pyproject.toml version ${PKG_VERSION}"
-            exit 1
-          fi
 
       - name: Build
         run: uv build

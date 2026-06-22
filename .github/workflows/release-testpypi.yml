@@ -9,6 +9,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v5
@@ -17,12 +19,6 @@ jobs:
 
       - name: Set up Python
         run: uv python install 3.12
-
-      - name: Show package version
-        run: |
-          VERSION="$(uv run python -c 'import tomllib; print(tomllib.loads(open("pyproject.toml","rb").read().decode())["project"]["version"])')"
-          echo "Publishing version: ${VERSION}"
-          echo "::notice title=TestPyPI version::${VERSION}"
 
       - name: Build
         run: uv build
