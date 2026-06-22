@@ -105,12 +105,30 @@ def sdd_report(
 @app.command("db-report")
 def db_discovery_report(
     run_id: int = typer.Argument(help="Run ID"),
-    output: Path | None = typer.Option(None, "--output", "-o", help="Write CSV to this path"),
+    output: Path | None = typer.Option(None, "--output", "-o", help="Write CSV (or zip) to this path"),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
-    """Download database discovery report (CSV) for a run."""
+    """Download database discovery report for a run.
+
+    Reports within Excel's row limit download as a single CSV. Larger reports are split
+    server-side into a zip of numbered CSV parts, written out as a binary `.zip`; that case
+    requires `-o`, since a zip can't be streamed to stdout.
+    """
     client = get_client(profile)
     report = client.get_db_discovery_result_report(RunId(run_id))
+
+    if isinstance(report, bytes):
+        if output is None:
+            abort(
+                "This report was split into a zip and can't be written to stdout.",
+                code=ErrorCode.INVALID_INPUT,
+                hint=f"Re-run with -o <path>.zip (e.g. -o discovery_report_{run_id}.zip).",
+            )
+        target = output if output.suffix.lower() == ".zip" else output.parent / (output.name + ".zip")
+        target.write_bytes(report)
+        print_success(f"Database discovery report (split, zip) written to {target}")
+        return
+
     _write_or_echo(report, output, "Database discovery report")
 
 
