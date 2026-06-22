@@ -231,6 +231,18 @@ From the terminal this is:
 gh release create v1.4.1 --generate-notes
 ```
 
+Or, to bump from the latest tag without picking the number yourself:
+
+```console
+make release-patch   # latest tag + 0.0.1 — bug fixes
+make release-minor   # latest tag + 0.1.0 — new features
+make release-major   # latest tag + 1.0.0 — breaking changes
+```
+
+These read the latest `vX.Y.Z` tag, confirm the next one, and create the release
+through `gh`. Nothing is committed to `main`, so the branch ruleset does not
+block them.
+
 Publishing the tag triggers the `Release` workflow,
 which builds the sdist and wheel
 and uploads them to PyPI via trusted publishing (OIDC).
