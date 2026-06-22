@@ -9,7 +9,7 @@ File an issue on the
 [GitHub issue tracker](https://github.com/datamasque/datamasque-cli/issues).
 Please include:
 
-- the version of `datamasque-cli` you're using (`dm --version` or `pip show datamasque-cli`);
+- the version of `datamasque-cli` you're using (`dm version` or `pip show datamasque-cli`);
 - the Python version and operating system;
 - the command you ran (with credentials and other sensitive arguments redacted);
 - the full output, including any traceback.
@@ -48,8 +48,8 @@ so the `dm` entry point on the venv reflects your working tree —
 no reinstall after each edit.
 
 ```console
-uv run dm --version              # one-shot, no venv activation needed
-source .venv/bin/activate && dm --version   # or activate once per shell
+uv run dm version                # one-shot, no venv activation needed
+source .venv/bin/activate && dm version     # or activate once per shell
 ```
 
 Point it at a DataMasque instance.
