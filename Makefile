@@ -1,4 +1,4 @@
-.PHONY: install lint format mypy test test-integration test-integration-local check build
+.PHONY: install lint format mypy test test-integration test-integration-local check build release-patch release-minor release-major
 
 install:
 	uv sync
@@ -32,3 +32,12 @@ format-check:
 
 build:
 	uv build
+
+release-patch:
+	@sh scripts/release.sh patch
+
+release-minor:
+	@sh scripts/release.sh minor
+
+release-major:
+	@sh scripts/release.sh major
