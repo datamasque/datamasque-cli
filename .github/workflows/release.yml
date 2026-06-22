@@ -14,6 +14,19 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Validate release tag
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if ! printf '%s' "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::Tag $tag is not in vMAJOR.MINOR.PATCH form"
+            exit 1
+          fi
+          newest="$(git tag --list 'v*.*.*' --sort=-v:refname | head -n1)"
+          if [ "$tag" != "$newest" ]; then
+            echo "::error::Tag $tag is not the newest release tag ($newest); refusing to publish an out-of-order version"
+            exit 1
+          fi
+
       - name: Set up uv
         uses: astral-sh/setup-uv@v5
         with:
