@@ -238,7 +238,7 @@ works out the next version,
 asks you to confirm,
 and creates the release.
 Creating the tag is what triggers CI to build and publish to PyPI,
-so give your pull requests clear titles and labels
+so give your pull requests clear titles
 for the generated notes to read well.
 
 The same thing by hand is `gh release create v1.4.1 --generate-notes`,
