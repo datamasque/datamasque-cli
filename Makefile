@@ -33,33 +33,11 @@ format-check:
 build:
 	uv build
 
-# Bump version, commit, tag, push — CI publishes automatically.
-# Usage: make release-patch  (0.1.0 → 0.1.1)
-#        make release-minor  (0.1.0 → 0.2.0)
-#        make release-major  (0.1.0 → 1.0.0)
-release-patch: check
-	$(eval VERSION := $(shell python3 scripts/bump_version.py patch))
-	uv lock
-	git add pyproject.toml uv.lock
-	git commit -m "Release v$(VERSION)"
-	git tag "v$(VERSION)"
-	git push && git push --tags
-	@echo "Released v$(VERSION) — CI will publish to PyPI (https://pypi.org/p/datamasque-cli)"
+release-patch:
+	@sh scripts/release.sh patch
 
-release-minor: check
-	$(eval VERSION := $(shell python3 scripts/bump_version.py minor))
-	uv lock
-	git add pyproject.toml uv.lock
-	git commit -m "Release v$(VERSION)"
-	git tag "v$(VERSION)"
-	git push && git push --tags
-	@echo "Released v$(VERSION) — CI will publish to PyPI (https://pypi.org/p/datamasque-cli)"
+release-minor:
+	@sh scripts/release.sh minor
 
-release-major: check
-	$(eval VERSION := $(shell python3 scripts/bump_version.py major))
-	uv lock
-	git add pyproject.toml uv.lock
-	git commit -m "Release v$(VERSION)"
-	git tag "v$(VERSION)"
-	git push && git push --tags
-	@echo "Released v$(VERSION) — CI will publish to PyPI (https://pypi.org/p/datamasque-cli)"
+release-major:
+	@sh scripts/release.sh major
