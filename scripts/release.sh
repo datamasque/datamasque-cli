@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
-# Cut a release by tagging only: hatch-vcs derives the version from the tag and
-# the Release workflow publishes to PyPI, so nothing is committed to main.
+# Cut a release by creating a tag only:
+# the version is derived from the tag, so nothing is committed to main.
 set -eu
 
 level=${1:-patch}
