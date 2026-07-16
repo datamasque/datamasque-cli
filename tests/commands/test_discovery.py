@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -150,3 +151,43 @@ def test_schema_results_lists_with_flattened_rows(mock_get_client: MagicMock, ru
     assert '"EMAIL_ADDRESS"' in result.stdout
     assert '"US_SSN, PII"' in result.stdout
     assert '"Primary"' in result.stdout
+
+
+@patch(f"{MODULE}.get_client")
+def test_schema_results_skips_unlabelled_matches(mock_get_client: MagicMock, runner: CliRunner) -> None:
+    client = MagicMock()
+    mock_get_client.return_value = client
+    client.list_schema_discovery_results.return_value = [
+        SimpleNamespace(
+            id=1,
+            column="email",
+            table="users",
+            schema_name="public",
+            data=SimpleNamespace(
+                data_type="varchar",
+                discovery_matches=[
+                    SimpleNamespace(label="EMAIL_ADDRESS"),
+                    SimpleNamespace(label=None),
+                ],
+                constraint="",
+            ),
+        ),
+        SimpleNamespace(
+            id=2,
+            column="notes",
+            table="users",
+            schema_name="public",
+            data=SimpleNamespace(
+                data_type="text",
+                discovery_matches=[SimpleNamespace(label=None)],
+                constraint="",
+            ),
+        ),
+    ]
+
+    result = runner.invoke(app, ["discover", "schema-results", "42", "--json"])
+
+    assert result.exit_code == 0
+    rows = json.loads(result.stdout)
+    assert rows[0]["matches"] == "EMAIL_ADDRESS"
+    assert rows[1]["matches"] == "-"

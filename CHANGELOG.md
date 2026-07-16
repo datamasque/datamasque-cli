@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.5.0
+
+### Added
+- Support for datamasque-python 1.1.8.
+  - `dm discover schema-results` handles matches with no label.
+  - Validation errors are now printed.
+  - `dm rulesets validate` and `dm libraries validate` now fail (return 4)
+    on invalid rulesets/libraries.
+  - `dm discover db-report` writes a zip archive returned for large reports to
+    `--output`, aborting with a hint rather than dumping binary data to stdout.
+
 ## v1.4.0
 
 ### Added

@@ -13,7 +13,16 @@ from datamasque.client.exceptions import DataMasqueApiError
 from datamasque.client.models.ruleset import Ruleset, RulesetType
 
 from datamasque_cli.client import get_client
-from datamasque_cli.output import ErrorCode, abort, print_error, print_info, print_success, print_warning, render_output
+from datamasque_cli.output import (
+    ErrorCode,
+    abort,
+    abort_if_invalid,
+    print_error,
+    print_info,
+    print_success,
+    print_warning,
+    render_output,
+)
 
 app = typer.Typer(help="Manage masking rulesets.", no_args_is_help=True)
 
@@ -204,6 +213,7 @@ def validate_ruleset(
     # `try/finally` so a Ctrl-C or unexpected exception between create and
     # delete still cleans up the temp ruleset on the server.
     try:
+        abort_if_invalid(f"Ruleset '{file.name}' ({rs_type.value})", created.is_valid, created.validation_errors)
         print_success(f"Ruleset '{file.name}' ({rs_type.value}) is valid.")
     finally:
         if created.id is not None:

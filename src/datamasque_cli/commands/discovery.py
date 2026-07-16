@@ -77,7 +77,7 @@ def schema_results(
             "table": r.table,
             "column": r.column,
             "data_type": r.data.data_type or "",
-            "matches": ", ".join(m.label for m in r.data.discovery_matches) or "-",
+            "matches": ", ".join(m.label for m in r.data.discovery_matches if m.label) or "-",
             "constraint": r.data.constraint or "",
         }
         for r in results
