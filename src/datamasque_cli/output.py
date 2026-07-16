@@ -18,6 +18,7 @@ from enum import StrEnum
 from typing import Any, NoReturn
 
 import typer
+from datamasque.client.models.status import ValidationErrorDetails, ValidationStatus
 from rich.console import Console
 from rich.table import Table
 from rich.text import Text
@@ -248,3 +249,13 @@ def abort(message: str, *, code: ErrorCode = ErrorCode.ERROR, hint: str | None =
         if hint:
             console.print(f"[dim]Hint: {hint}[/dim]")
     raise SystemExit(EXIT_CODES[code])
+
+
+def abort_if_invalid(subject: str, is_valid: ValidationStatus | None, errors: list[ValidationErrorDetails]) -> None:
+    """Print each server-side validation error for `subject` and exit, if it failed validation."""
+    if is_valid is not ValidationStatus.invalid and not errors:
+        return
+    for error in errors:
+        location = f" (line {error.line_number})" if error.line_number is not None else ""
+        print_error(f"{error.message}{location}")
+    abort(f"{subject} is invalid.", code=ErrorCode.INVALID_INPUT)

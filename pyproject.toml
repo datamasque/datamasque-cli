@@ -12,7 +12,7 @@ requires-python = ">=3.11"
 dependencies = [
     "typer>=0.15.0",
     "tomli-w>=1.0.0",
-    "datamasque-python>=1.0.0,<2",
+    "datamasque-python>=1.1.8,<2",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",

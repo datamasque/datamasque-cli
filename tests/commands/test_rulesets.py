@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
 from datamasque.client.exceptions import DataMasqueApiError
 from datamasque.client.models.ruleset import RulesetType
+from datamasque.client.models.status import ValidationStatus
 from typer.testing import CliRunner
 
 from datamasque_cli.main import app
@@ -15,6 +18,20 @@ MODULE = "datamasque_cli.commands.rulesets"
 
 def _ruleset(id_: int, name: str, rs_type: RulesetType) -> SimpleNamespace:
     return SimpleNamespace(id=id_, name=name, ruleset_type=rs_type, yaml="")
+
+
+def _create_returning(
+    is_valid: ValidationStatus | None,
+    validation_errors: list[SimpleNamespace] | None = None,
+) -> Callable[[object], object]:
+
+    def fake_create(rs: object) -> object:
+        rs.id = 99  # type: ignore[attr-defined]
+        rs.is_valid = is_valid  # type: ignore[attr-defined]
+        rs.validation_errors = validation_errors or []  # type: ignore[attr-defined]
+        return rs
+
+    return fake_create
 
 
 # -- create (type resolution via server lookup) ----------------------------
@@ -239,12 +256,7 @@ def test_validate_uses_unique_temp_name_and_cleans_by_id(
 ) -> None:
     client = MagicMock()
     mock_get_client.return_value = client
-
-    def fake_create(rs: object) -> object:
-        rs.id = 99  # type: ignore[attr-defined]
-        return rs
-
-    client.create_or_update_ruleset.side_effect = fake_create
+    client.create_or_update_ruleset.side_effect = _create_returning(ValidationStatus.valid)
 
     yaml_file = tmp_path / "rs.yaml"
     yaml_file.write_text("tasks:\n  - type: mask_table\n")
@@ -268,12 +280,7 @@ def test_validate_cleans_up_when_print_success_interrupted(
     """`try/finally` guarantees the temp ruleset is deleted even if a later step raises."""
     client = MagicMock()
     mock_get_client.return_value = client
-
-    def fake_create(rs: object) -> object:
-        rs.id = 99  # type: ignore[attr-defined]
-        return rs
-
-    client.create_or_update_ruleset.side_effect = fake_create
+    client.create_or_update_ruleset.side_effect = _create_returning(ValidationStatus.valid)
 
     yaml_file = tmp_path / "rs.yaml"
     yaml_file.write_text("tasks:\n  - type: mask_table\n")
@@ -287,12 +294,7 @@ def test_validate_cleans_up_when_print_success_interrupted(
 def test_validate_warns_when_cleanup_fails(mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path) -> None:
     client = MagicMock()
     mock_get_client.return_value = client
-
-    def fake_create(rs: object) -> object:
-        rs.id = 99  # type: ignore[attr-defined]
-        return rs
-
-    client.create_or_update_ruleset.side_effect = fake_create
+    client.create_or_update_ruleset.side_effect = _create_returning(ValidationStatus.valid)
     client.delete_ruleset_by_id_if_exists.side_effect = DataMasqueApiError("boom", response=MagicMock())
 
     yaml_file = tmp_path / "rs.yaml"
@@ -302,6 +304,50 @@ def test_validate_warns_when_cleanup_fails(mock_get_client: MagicMock, runner: C
 
     assert result.exit_code == 0
     assert "left on server" in result.stderr
+
+
+@patch(f"{MODULE}.get_client")
+def test_validate_sync_invalid_prints_errors_and_cleans_up(
+    mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path
+) -> None:
+    client = MagicMock()
+    mock_get_client.return_value = client
+    client.create_or_update_ruleset.side_effect = _create_returning(
+        ValidationStatus.invalid,
+        [
+            SimpleNamespace(message="unknown mask type 'from_nowhere'", line_number=7),
+            SimpleNamespace(message="tasks must not be empty", line_number=None),
+        ],
+    )
+
+    yaml_file = tmp_path / "rs.yaml"
+    yaml_file.write_text("tasks: []\n")
+
+    result = runner.invoke(app, ["rulesets", "validate", "--file", str(yaml_file), "--type", "database"])
+
+    assert result.exit_code == 4  # invalid_input
+    assert "unknown mask type 'from_nowhere'" in result.stderr
+    assert "line 7" in result.stderr
+    assert "tasks must not be empty" in result.stderr
+    client.delete_ruleset_by_id_if_exists.assert_called_once_with(99)
+
+
+@pytest.mark.parametrize("initial_status", [None, ValidationStatus.in_progress])
+@patch(f"{MODULE}.get_client")
+def test_validate_nonterminal_status_reports_valid(
+    mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path, initial_status: ValidationStatus | None
+) -> None:
+    client = MagicMock()
+    mock_get_client.return_value = client
+    client.create_or_update_ruleset.side_effect = _create_returning(initial_status)
+
+    yaml_file = tmp_path / "rs.yaml"
+    yaml_file.write_text("tasks:\n  - type: mask_table\n")
+
+    result = runner.invoke(app, ["rulesets", "validate", "--file", str(yaml_file), "--type", "database"])
+
+    assert result.exit_code == 0
+    client.delete_ruleset_by_id_if_exists.assert_called_once_with(99)
 
 
 # -- export-bundle / import-bundle ----------------------------------------

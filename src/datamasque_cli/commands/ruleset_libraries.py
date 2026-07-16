@@ -8,7 +8,7 @@ import typer
 from datamasque.client.models.ruleset_library import RulesetLibrary
 
 from datamasque_cli.client import get_client
-from datamasque_cli.output import ErrorCode, abort, print_success, render_output
+from datamasque_cli.output import ErrorCode, abort, abort_if_invalid, print_success, render_output
 
 app = typer.Typer(help="Manage ruleset libraries.", no_args_is_help=True)
 
@@ -114,16 +114,18 @@ def validate_library(
 
     Triggers a server-side validation pass on an existing library and reports the result.
     """
+    label = f"{namespace}/{name}" if namespace else name
+
     client = get_client(profile)
     lib = client.get_ruleset_library_by_name(name, namespace)
 
     if lib is None:
-        label = f"{namespace}/{name}" if namespace else name
         abort(f"Library '{label}' not found.", code=ErrorCode.NOT_FOUND)
 
     validated = client.validate_ruleset_library(lib.id)
+    abort_if_invalid(f"Library '{label}'", validated.is_valid, validated.validation_errors)
+
     status = validated.is_valid.value if validated.is_valid else "unknown"
-    label = f"{namespace}/{name}" if namespace else name
     print_success(f"Library '{label}' validation status: {status}")
 
 

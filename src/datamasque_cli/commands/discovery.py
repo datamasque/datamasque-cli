@@ -77,7 +77,7 @@ def schema_results(
             "table": r.table,
             "column": r.column,
             "data_type": r.data.data_type or "",
-            "matches": ", ".join(m.label for m in r.data.discovery_matches) or "-",
+            "matches": ", ".join(m.label for m in r.data.discovery_matches if m.label) or "-",
             "constraint": r.data.constraint or "",
         }
         for r in results
@@ -111,6 +111,19 @@ def db_discovery_report(
     """Download database discovery report (CSV) for a run."""
     client = get_client(profile)
     report = client.get_db_discovery_result_report(RunId(run_id))
+
+    if isinstance(report, bytes):
+        if output is None:
+            abort(
+                f"Database discovery report for run {run_id} is a zip archive of CSV parts; "
+                "refusing to write binary data to stdout.",
+                code=ErrorCode.INVALID_INPUT,
+                hint="Pass --output <file>.zip to save it.",
+            )
+        output.write_bytes(report)
+        print_success(f"Database discovery report written to {output}")
+        return
+
     _write_or_echo(report, output, "Database discovery report")
 
 
