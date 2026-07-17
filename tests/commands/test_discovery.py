@@ -107,7 +107,64 @@ def test_schema_starts_discovery_run_and_points_at_results(mock_get_client: Magi
     (call,) = client.start_schema_discovery_run.call_args_list
     (request,) = call.args
     assert request.connection == "abc-123"
+    assert request.in_data_discovery is None
     assert "dm discover schema-results 99" in result.stderr
+
+
+@patch(f"{MODULE}.get_client")
+def test_schema_sends_idd_and_preview_options(mock_get_client: MagicMock, runner: CliRunner) -> None:
+    client = MagicMock()
+    mock_get_client.return_value = client
+    client.list_connections.return_value = [
+        SimpleNamespace(id="abc-123", name="my_db", mask_type="database"),
+    ]
+    client.start_schema_discovery_run.return_value = 99
+
+    result = runner.invoke(app, ["discover", "schema", "my_db", "--idd", "--no-preview"])
+
+    assert result.exit_code == 0
+    (call,) = client.start_schema_discovery_run.call_args_list
+    (request,) = call.args
+    assert request.in_data_discovery.enabled is True
+    assert request.in_data_discovery.safe_data_preview.enabled is False
+
+
+@patch(f"{MODULE}.get_client")
+def test_schema_starts_discovery_run_from_config(mock_get_client: MagicMock, runner: CliRunner) -> None:
+    client = MagicMock()
+    mock_get_client.return_value = client
+    client.list_connections.return_value = [
+        SimpleNamespace(id="abc-123", name="my_db", mask_type="database"),
+    ]
+    client.list_discovery_configs.return_value = [
+        SimpleNamespace(id="cfg-9", name="pii_config"),
+    ]
+    client.start_schema_discovery_run_from_config.return_value = 7
+
+    result = runner.invoke(app, ["discover", "schema", "my_db", "--config", "pii_config"])
+
+    assert result.exit_code == 0
+    (call,) = client.start_schema_discovery_run_from_config.call_args_list
+    (request,) = call.args
+    assert request.connection == "abc-123"
+    assert request.discovery_config == "cfg-9"
+    assert "dm discover schema-results 7" in result.stderr
+
+
+@patch(f"{MODULE}.get_client")
+def test_schema_rejects_config_combined_with_idd_flags(mock_get_client: MagicMock, runner: CliRunner) -> None:
+    result = runner.invoke(app, ["discover", "schema", "my_db", "--config", "pii_config", "--idd"])
+
+    assert result.exit_code != 0
+    mock_get_client.assert_not_called()
+
+
+@patch(f"{MODULE}.get_client")
+def test_schema_rejects_preview_without_idd(mock_get_client: MagicMock, runner: CliRunner) -> None:
+    result = runner.invoke(app, ["discover", "schema", "my_db", "--no-preview"])
+
+    assert result.exit_code != 0
+    mock_get_client.assert_not_called()
 
 
 @patch(f"{MODULE}.get_client")

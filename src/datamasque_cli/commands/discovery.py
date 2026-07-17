@@ -8,7 +8,13 @@ from pathlib import Path
 import typer
 from datamasque.client import DataMasqueClient, RunId
 from datamasque.client.models.connection import ConnectionId
-from datamasque.client.models.discovery import SchemaDiscoveryRequest
+from datamasque.client.models.discovery import (
+    InDataDiscoveryConfig,
+    SafeDataPreviewOptions,
+    SchemaDiscoveryFromConfigRequest,
+    SchemaDiscoveryRequest,
+)
+from datamasque.client.models.discovery_config import DiscoveryConfigId
 
 from datamasque_cli.client import get_client
 from datamasque_cli.output import ErrorCode, abort, print_json, print_success, render_output, should_emit_json
@@ -33,9 +39,24 @@ def _resolve_connection_id(client: DataMasqueClient, name_or_id: str) -> str:
     return str(match.id)
 
 
+def _resolve_discovery_config_id(client: DataMasqueClient, name_or_id: str) -> str:
+    """Resolve a discovery config name or ID to its UUID string."""
+    match = next((c for c in client.list_discovery_configs() if c.name == name_or_id or str(c.id) == name_or_id), None)
+    if match is None:
+        abort(f"Discovery config '{name_or_id}' not found.", code=ErrorCode.NOT_FOUND)
+    return str(match.id)
+
+
 @app.command("schema")
 def schema_discovery(
     connection: str = typer.Argument(help="Connection name or ID"),
+    config: str | None = typer.Option(
+        None, "--config", help="Discovery config name or ID to run with (holds IDD rules and preview settings)"
+    ),
+    idd: bool | None = typer.Option(None, "--idd/--no-idd", help="Enable or disable in-data discovery"),
+    preview: bool | None = typer.Option(
+        None, "--preview/--no-preview", help="Enable or disable Safe Data Preview (requires --idd)"
+    ),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Start a schema-discovery run on a connection.
@@ -44,10 +65,35 @@ def schema_discovery(
     `dm discover schema-results <run-id>` once this run reaches a terminal state
     (poll with `dm run status <run-id>`).
     """
+    if config is not None and (idd is not None or preview is not None):
+        abort("--config carries its own IDD and preview settings; drop --idd/--preview.", code=ErrorCode.INVALID_INPUT)
+    if preview is not None and idd is None:
+        abort(
+            "--preview/--no-preview requires --idd (the preview rides on in-data discovery).",
+            code=ErrorCode.INVALID_INPUT,
+        )
+
     client = get_client(profile)
     conn_id = _resolve_connection_id(client, connection)
 
-    request = SchemaDiscoveryRequest(connection=ConnectionId(conn_id))
+    if config is not None:
+        config_id = _resolve_discovery_config_id(client, config)
+        from_config_request = SchemaDiscoveryFromConfigRequest(
+            connection=ConnectionId(conn_id), discovery_config=DiscoveryConfigId(config_id)
+        )
+        run_id = client.start_schema_discovery_run_from_config(from_config_request)
+        print_success(
+            f"Schema discovery run {run_id} started for connection '{connection}' with config '{config}'. "
+            f"Once finished, list results with: dm discover schema-results {run_id}"
+        )
+        return
+
+    in_data_discovery = None
+    if idd is not None:
+        safe_data_preview = SafeDataPreviewOptions(enabled=preview) if preview is not None else None
+        in_data_discovery = InDataDiscoveryConfig(enabled=idd, safe_data_preview=safe_data_preview)
+
+    request = SchemaDiscoveryRequest(connection=ConnectionId(conn_id), in_data_discovery=in_data_discovery)
     run_id = client.start_schema_discovery_run(request)
     print_success(
         f"Schema discovery run {run_id} started for connection '{connection}'. "
