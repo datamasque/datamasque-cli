@@ -22,6 +22,12 @@ def test_catalog_compact_json_lists_every_subcommand(monkeypatch: pytest.MonkeyP
     assert "run start" in paths
     assert "auth login" in paths
 
+    # Nested discovery-config groups surface as `discover <group> <command>` paths.
+    assert "discover schema" in paths
+    assert "discover configs list" in paths
+    assert "discover libraries create" in paths
+    assert "discover config-snapshot" in paths
+
 
 def test_catalog_full_includes_options(monkeypatch: pytest.MonkeyPatch, runner: CliRunner) -> None:
     monkeypatch.setenv("DM_OUTPUT", "json")

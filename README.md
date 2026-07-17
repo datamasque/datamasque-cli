@@ -216,11 +216,36 @@ dm users delete <username>                      # Delete a user
 ### Discovery
 
 ```console
-dm discover schema <connection>                 # Start a schema-discovery run
-dm discover schema-results <run-id>             # List schema-discovery results once the run finishes
-dm discover sdd-report <run-id>                 # Sensitive data discovery report
-dm discover db-report <run-id>                  # Database discovery CSV
-dm discover file-report <run-id>                # File discovery report
+dm discover schema <connection>                      # Schema discovery (built-in keyword-driven)
+dm discover schema <connection> --config <name>      # Schema discovery from a saved database config
+dm discover schema-results <run-id>                  # List schema-discovery results once the run finishes
+dm discover file <connection>                        # File data discovery (built-in keyword-driven)
+dm discover file <connection> --config <name>        # File data discovery from a saved file config
+dm discover sdd-report <run-id>                      # Sensitive data discovery report
+dm discover db-report <run-id>                       # Database discovery CSV
+dm discover file-report <run-id>                     # File discovery report
+dm discover config-snapshot <run-id> -o used.yaml    # Download the discovery config a run actually used
+```
+
+#### Discovery configs
+
+```console
+dm discover configs list [--type database|file]                    # List configs
+dm discover configs get <name> [--type database] [--yaml]          # Show details or raw YAML
+dm discover configs defaults [--type database|file] -o cfg.yaml    # Built-in default as a starting point
+dm discover configs create --name <n> --type database -f cfg.yaml  # Create/update from YAML
+dm discover configs delete <name> [--type database]                # Delete a config
+dm discover configs validate -f cfg.yaml --type database           # Validate a YAML file against the server
+```
+
+#### Discovery config libraries
+
+```console
+dm discover libraries list [--type database|file]
+dm discover libraries get <name> [--type database] [--namespace org] [--yaml]
+dm discover libraries create --name <n> --type database --namespace org -f lib.yaml
+dm discover libraries delete <name> [--type database] [--namespace org] [--force]  # --force if imported by configs
+dm discover libraries validate -f lib.yaml --type database
 ```
 
 ### Seeds

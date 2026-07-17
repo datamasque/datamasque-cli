@@ -10,6 +10,15 @@
     on invalid rulesets/libraries.
   - `dm discover db-report` writes a zip archive returned for large reports to
     `--output`, aborting with a hint rather than dumping binary data to stdout.
+- Support for Configurable Discovery:
+  - `dm discover configs` — list, get, defaults, create, delete, and validate
+    discovery configs (`database` or `file`).
+  - `dm discover libraries` — list, get, create, delete, and validate discovery
+    config libraries.
+  - `dm discover schema --config <name>` and `dm discover file
+    [--config <name>]` start discovery runs with or without a specific config.
+  - `dm discover config-snapshot <run-id>` downloads the discovery config a run
+    actually used.
 
 ## v1.4.0
 

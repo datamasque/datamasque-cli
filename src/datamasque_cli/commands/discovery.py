@@ -8,12 +8,21 @@ from pathlib import Path
 import typer
 from datamasque.client import DataMasqueClient, RunId
 from datamasque.client.models.connection import ConnectionId
-from datamasque.client.models.discovery import SchemaDiscoveryRequest
+from datamasque.client.models.discovery import (
+    FileDataDiscoveryFromConfigRequest,
+    FileDataDiscoveryRequest,
+    SchemaDiscoveryFromConfigRequest,
+    SchemaDiscoveryRequest,
+)
+from datamasque.client.models.discovery_config import DiscoveryConfigId, DiscoveryConfigType
 
 from datamasque_cli.client import get_client
+from datamasque_cli.commands import discovery_config_libraries, discovery_configs
 from datamasque_cli.output import ErrorCode, abort, print_json, print_success, render_output, should_emit_json
 
 app = typer.Typer(help="Data discovery operations.", no_args_is_help=True)
+app.add_typer(discovery_configs.app, name="configs")
+app.add_typer(discovery_config_libraries.app, name="libraries")
 
 
 def _write_or_echo(content: str, output: Path | None, success_label: str) -> None:
@@ -33,9 +42,40 @@ def _resolve_connection_id(client: DataMasqueClient, name_or_id: str) -> str:
     return str(match.id)
 
 
+def _resolve_discovery_config_id(
+    client: DataMasqueClient, name: str, expected_type: DiscoveryConfigType
+) -> DiscoveryConfigId:
+    """Resolve a discovery config name to its UUID, requiring it to be of `expected_type`."""
+    named = [c for c in client.list_discovery_configs() if c.name == name]
+    matches = [c for c in named if c.config_type is expected_type]
+
+    if not matches:
+        if named:
+            existing = ", ".join(c.config_type.value for c in named)
+            abort(
+                f"Discovery config '{name}' exists as {existing}, "
+                f"but {expected_type.value} discovery needs a {expected_type.value} config.",
+                code=ErrorCode.INVALID_INPUT,
+            )
+        abort(f"Discovery config '{name}' not found.", code=ErrorCode.NOT_FOUND)
+    if len(matches) > 1:
+        options = "\n  ".join(f"id={c.id}" for c in matches)
+        abort(
+            f"Multiple {expected_type.value} discovery configs named '{name}':\n  {options}",
+            code=ErrorCode.AMBIGUOUS,
+        )
+
+    config_id = matches[0].id
+    assert config_id is not None
+    return config_id
+
+
 @app.command("schema")
 def schema_discovery(
     connection: str = typer.Argument(help="Connection name or ID"),
+    config: str | None = typer.Option(
+        None, "--config", "-c", help="Run with a saved database discovery config (configurable discovery)"
+    ),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Start a schema-discovery run on a connection.
@@ -47,11 +87,51 @@ def schema_discovery(
     client = get_client(profile)
     conn_id = _resolve_connection_id(client, connection)
 
-    request = SchemaDiscoveryRequest(connection=ConnectionId(conn_id))
-    run_id = client.start_schema_discovery_run(request)
+    if config is not None:
+        config_id = _resolve_discovery_config_id(client, config, DiscoveryConfigType.database)
+        from_config = SchemaDiscoveryFromConfigRequest(connection=ConnectionId(conn_id), discovery_config=config_id)
+        run_id = client.start_schema_discovery_run_from_config(from_config)
+        source = f"config '{config}'"
+    else:
+        request = SchemaDiscoveryRequest(connection=ConnectionId(conn_id))
+        run_id = client.start_schema_discovery_run(request)
+        source = "default discovery"
+
     print_success(
-        f"Schema discovery run {run_id} started for connection '{connection}'. "
+        f"Schema discovery run {run_id} started for connection '{connection}' ({source}). "
         f"Once finished, list results with: dm discover schema-results {run_id}"
+    )
+
+
+@app.command("file")
+def file_discovery(
+    connection: str = typer.Argument(help="Connection name or ID"),
+    config: str | None = typer.Option(
+        None, "--config", "-c", help="Run with a saved file discovery config (configurable discovery)"
+    ),
+    profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
+) -> None:
+    """Start a file-data-discovery run on a file connection.
+
+    Once finished, download the report with `dm discover file-report <run-id>`
+    (poll with `dm run status <run-id>`).
+    """
+    client = get_client(profile)
+    conn_id = _resolve_connection_id(client, connection)
+
+    if config is not None:
+        config_id = _resolve_discovery_config_id(client, config, DiscoveryConfigType.file)
+        from_config = FileDataDiscoveryFromConfigRequest(connection=ConnectionId(conn_id), discovery_config=config_id)
+        run_id = client.start_file_data_discovery_run_from_config(from_config)
+        source = f"config '{config}'"
+    else:
+        request = FileDataDiscoveryRequest(connection=ConnectionId(conn_id))
+        run_id = client.start_file_data_discovery_run(request)
+        source = "default discovery"
+
+    print_success(
+        f"File data discovery run {run_id} started for connection '{connection}' ({source}). "
+        f"Once finished, download the report with: dm discover file-report {run_id}"
     )
 
 
@@ -147,3 +227,15 @@ def file_discovery_report(
         print_json(report)
     else:
         render_output(report, is_json=False, title=f"File Discovery: Run {run_id}")
+
+
+@app.command("config-snapshot")
+def config_snapshot(
+    run_id: int = typer.Argument(help="Discovery run ID"),
+    output: Path | None = typer.Option(None, "--output", "-o", help="Write YAML to this path"),
+    profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
+) -> None:
+    """Download the discovery config a run used (the run's snapshot)."""
+    client = get_client(profile)
+    snapshot = client.get_discovery_run_config_snapshot_yaml(RunId(run_id))
+    _write_or_echo(snapshot, output, "Discovery config snapshot")

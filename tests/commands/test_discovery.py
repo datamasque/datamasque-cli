@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+from datamasque.client.models.discovery_config import DiscoveryConfigType
 from typer.testing import CliRunner
 
 from datamasque_cli.main import app
@@ -193,3 +194,92 @@ def test_schema_results_skips_unlabelled_matches(mock_get_client: MagicMock, run
     rows = json.loads(result.stdout)
     assert rows[0]["matches"] == "EMAIL_ADDRESS"
     assert rows[1]["matches"] == "-"
+
+
+# -- configurable-discovery run triggers ----------------------------------
+
+
+@patch(f"{MODULE}.get_client")
+def test_schema_with_config_runs_from_saved_config(mock_get_client: MagicMock, runner: CliRunner) -> None:
+    client = MagicMock()
+    mock_get_client.return_value = client
+    client.list_connections.return_value = [SimpleNamespace(id="abc-123", name="my_db", mask_type="database")]
+    client.list_discovery_configs.return_value = [
+        SimpleNamespace(id="cfg-1", name="emp", config_type=DiscoveryConfigType.database),
+    ]
+    client.start_schema_discovery_run_from_config.return_value = 77
+
+    result = runner.invoke(app, ["discover", "schema", "my_db", "--config", "emp"])
+
+    assert result.exit_code == 0
+    client.start_schema_discovery_run.assert_not_called()
+    (call,) = client.start_schema_discovery_run_from_config.call_args_list
+    (request,) = call.args
+    assert request.connection == "abc-123"
+    assert request.discovery_config == "cfg-1"
+    assert "dm discover schema-results 77" in result.stderr
+
+
+@patch(f"{MODULE}.get_client")
+def test_schema_config_wrong_type_aborts(mock_get_client: MagicMock, runner: CliRunner) -> None:
+    client = MagicMock()
+    mock_get_client.return_value = client
+    client.list_connections.return_value = [SimpleNamespace(id="abc-123", name="my_db", mask_type="database")]
+    client.list_discovery_configs.return_value = [
+        SimpleNamespace(id="cfg-2", name="docs", config_type=DiscoveryConfigType.file),
+    ]
+
+    result = runner.invoke(app, ["discover", "schema", "my_db", "--config", "docs"])
+
+    assert result.exit_code == 4  # invalid_input
+    client.start_schema_discovery_run_from_config.assert_not_called()
+
+
+@patch(f"{MODULE}.get_client")
+def test_file_without_config_runs_keyword_discovery(mock_get_client: MagicMock, runner: CliRunner) -> None:
+    client = MagicMock()
+    mock_get_client.return_value = client
+    client.list_connections.return_value = [SimpleNamespace(id="fs-1", name="my_files", mask_type="file")]
+    client.start_file_data_discovery_run.return_value = 88
+
+    result = runner.invoke(app, ["discover", "file", "my_files"])
+
+    assert result.exit_code == 0
+    client.start_file_data_discovery_run_from_config.assert_not_called()
+    (call,) = client.start_file_data_discovery_run.call_args_list
+    (request,) = call.args
+    assert request.connection == "fs-1"
+    assert "dm discover file-report 88" in result.stderr
+
+
+@patch(f"{MODULE}.get_client")
+def test_file_with_config_runs_from_saved_config(mock_get_client: MagicMock, runner: CliRunner) -> None:
+    client = MagicMock()
+    mock_get_client.return_value = client
+    client.list_connections.return_value = [SimpleNamespace(id="fs-1", name="my_files", mask_type="file")]
+    client.list_discovery_configs.return_value = [
+        SimpleNamespace(id="cfg-3", name="docs", config_type=DiscoveryConfigType.file),
+    ]
+    client.start_file_data_discovery_run_from_config.return_value = 89
+
+    result = runner.invoke(app, ["discover", "file", "my_files", "--config", "docs"])
+
+    assert result.exit_code == 0
+    client.start_file_data_discovery_run.assert_not_called()
+    (call,) = client.start_file_data_discovery_run_from_config.call_args_list
+    (request,) = call.args
+    assert request.discovery_config == "cfg-3"
+
+
+@patch(f"{MODULE}.get_client")
+def test_config_snapshot_writes_to_output(mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path) -> None:
+    client = MagicMock()
+    mock_get_client.return_value = client
+    client.get_discovery_run_config_snapshot_yaml.return_value = "# provenance\nlabels: []\n"
+
+    out = tmp_path / "used.yaml"
+    result = runner.invoke(app, ["discover", "config-snapshot", "42", "--output", str(out)])
+
+    assert result.exit_code == 0
+    assert out.read_text() == "# provenance\nlabels: []\n"
+    client.get_discovery_run_config_snapshot_yaml.assert_called_once_with(42)
