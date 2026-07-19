@@ -159,6 +159,9 @@ def schema_results(
             "data_type": r.data.data_type or "",
             "matches": ", ".join(m.label for m in r.data.discovery_matches if m.label) or "-",
             "constraint": r.data.constraint or "",
+            "safe_data_preview": (
+                r.data.safe_data_preview.model_dump(mode="json") if r.data.safe_data_preview else None
+            ),
         }
         for r in results
     ]
@@ -217,16 +220,34 @@ def file_discovery_report(
     """Download file discovery report for a run."""
     client = get_client(profile)
     report = client.get_file_data_discovery_report(RunId(run_id))
+    full = [result.model_dump(mode="json") for result in report]
 
     if output is not None:
-        output.write_text(json.dumps(report, indent=2, default=str))
+        output.write_text(json.dumps(full, indent=2, default=str))
         print_success(f"File discovery report written to {output}")
         return
 
     if should_emit_json(is_json):
-        print_json(report)
-    else:
-        render_output(report, is_json=False, title=f"File Discovery: Run {run_id}")
+        print_json(full)
+        return
+
+    rows = [
+        {
+            "id": result.id,
+            "files": ", ".join(f.path for f in result.files),
+            "locator": locator.locator,
+            "matches": ", ".join(m.label for m in locator.matches if m.label) or "-",
+            "data_types": ", ".join(locator.data_types) or "-",
+        }
+        for result in report
+        for locator in result.results
+    ]
+    render_output(
+        rows,
+        is_json=False,
+        columns=["id", "files", "locator", "matches", "data_types"],
+        title=f"File Discovery: Run {run_id}",
+    )
 
 
 @app.command("config-snapshot")

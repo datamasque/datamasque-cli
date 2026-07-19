@@ -5,12 +5,45 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+from datamasque.client.models.discovery import (
+    FileDiscoveryFile,
+    FileDiscoveryLocatorResult,
+    FileDiscoveryResult,
+)
 from datamasque.client.models.discovery_config import DiscoveryConfigType
+from datamasque.client.models.runs import RunConnectionRef
+from datamasque.client.models.safe_data_preview import (
+    CommonStatistics,
+    LengthsStatistics,
+    NumericPreview,
+    NumericStatistics,
+    NumericSummaries,
+    StringPreview,
+    StringStatistics,
+)
 from typer.testing import CliRunner
 
 from datamasque_cli.main import app
 
 MODULE = "datamasque_cli.commands.discovery"
+
+
+def _string_preview() -> StringPreview:
+    return StringPreview(
+        statistics_common=CommonStatistics(count_row=100, count_null=0, count_distinct=76),
+        statistics_kind=StringStatistics(
+            lengths=LengthsStatistics(min=8, max=30, mean=13.4, median=13.0, most_common=[]),
+        ),
+    )
+
+
+def _numeric_preview() -> NumericPreview:
+    return NumericPreview(
+        statistics_common=CommonStatistics(count_row=500, count_null=0, count_distinct=500),
+        statistics_kind=NumericStatistics(
+            summaries=NumericSummaries(mean=1.9e8, q1=9e7, q2=2.15e8, q3=2.7e8, p5=4.6e7, p95=2.78e8),
+        ),
+    )
 
 
 @patch(f"{MODULE}.get_client")
@@ -80,17 +113,48 @@ def test_db_report_zip_without_output_aborts_with_hint(mock_get_client: MagicMoc
     assert "PK" not in result.stdout
 
 
+def _file_report() -> list[FileDiscoveryResult]:
+    return [
+        FileDiscoveryResult(
+            id=7,
+            connection=RunConnectionRef(id="c1", name="myinput"),
+            file_type="csv",
+            files=[FileDiscoveryFile(path="data.csv", file_type="csv")],
+            results=[
+                FileDiscoveryLocatorResult(
+                    locator="phone", matches=[], data_types=["int"], safe_data_preview=_numeric_preview()
+                ),
+            ],
+        ),
+    ]
+
+
 @patch(f"{MODULE}.get_client")
 def test_file_report_writes_json_to_output(mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path) -> None:
     client = MagicMock()
     mock_get_client.return_value = client
-    client.get_file_data_discovery_report.return_value = [{"file": "a"}]
+    client.get_file_data_discovery_report.return_value = _file_report()
 
     out = tmp_path / "file.json"
-    result = runner.invoke(app, ["discover", "file-report", "42", "--output", str(out)])
+    result = runner.invoke(app, ["discover", "file-report", "7", "--output", str(out)])
 
     assert result.exit_code == 0
-    assert '"file": "a"' in out.read_text()
+    payload = json.loads(out.read_text())
+    assert payload[0]["results"][0]["safe_data_preview"]["kind"] == "numeric"
+
+
+@patch(f"{MODULE}.get_client")
+def test_file_report_table_lists_locators(mock_get_client: MagicMock, runner: CliRunner) -> None:
+    client = MagicMock()
+    mock_get_client.return_value = client
+    client.get_file_data_discovery_report.return_value = _file_report()
+
+    result = runner.invoke(app, ["discover", "file-report", "7"])
+
+    assert result.exit_code == 0
+    assert "phone" in result.stdout
+    assert "data.csv" in result.stdout
+    assert "safe_data_preview" not in result.stdout
 
 
 # -- schema discovery trigger ---------------------------------------------
@@ -128,6 +192,7 @@ def test_schema_results_lists_with_flattened_rows(mock_get_client: MagicMock, ru
                 data_type="varchar",
                 discovery_matches=[SimpleNamespace(label="EMAIL_ADDRESS")],
                 constraint="",
+                safe_data_preview=None,
             ),
         ),
         SimpleNamespace(
@@ -142,6 +207,7 @@ def test_schema_results_lists_with_flattened_rows(mock_get_client: MagicMock, ru
                     SimpleNamespace(label="PII"),
                 ],
                 constraint="Primary",
+                safe_data_preview=None,
             ),
         ),
     ]
@@ -173,6 +239,7 @@ def test_schema_results_skips_unlabelled_matches(mock_get_client: MagicMock, run
                     SimpleNamespace(label=None),
                 ],
                 constraint="",
+                safe_data_preview=None,
             ),
         ),
         SimpleNamespace(
@@ -184,6 +251,7 @@ def test_schema_results_skips_unlabelled_matches(mock_get_client: MagicMock, run
                 data_type="text",
                 discovery_matches=[SimpleNamespace(label=None)],
                 constraint="",
+                safe_data_preview=None,
             ),
         ),
     ]
@@ -194,6 +262,37 @@ def test_schema_results_skips_unlabelled_matches(mock_get_client: MagicMock, run
     rows = json.loads(result.stdout)
     assert rows[0]["matches"] == "EMAIL_ADDRESS"
     assert rows[1]["matches"] == "-"
+
+
+@patch(f"{MODULE}.get_client")
+def test_schema_results_includes_safe_data_preview_in_json(mock_get_client: MagicMock, runner: CliRunner) -> None:
+    client = MagicMock()
+    mock_get_client.return_value = client
+    client.list_schema_discovery_results.return_value = [
+        SimpleNamespace(
+            id=1,
+            column="author",
+            table="books",
+            schema_name="public",
+            data=SimpleNamespace(
+                data_type="varchar",
+                discovery_matches=[SimpleNamespace(label="name")],
+                constraint="",
+                safe_data_preview=_string_preview(),
+            ),
+        ),
+    ]
+
+    result = runner.invoke(app, ["discover", "schema-results", "42", "--json"])
+
+    assert result.exit_code == 0
+    rows = json.loads(result.stdout)
+    assert rows[0]["safe_data_preview"]["kind"] == "string"
+    assert rows[0]["safe_data_preview"]["statistics_kind"]["lengths"]["max"] == 30
+
+    table = runner.invoke(app, ["discover", "schema-results", "42"])
+    assert table.exit_code == 0
+    assert "safe_data_preview" not in table.stdout
 
 
 # -- configurable-discovery run triggers ----------------------------------

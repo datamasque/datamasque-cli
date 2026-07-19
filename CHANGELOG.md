@@ -19,6 +19,8 @@
     [--config <name>]` start discovery runs with or without a specific config.
   - `dm discover config-snapshot <run-id>` downloads the discovery config a run
     actually used.
+- Safe Data Preview: `dm discover schema-results` and `dm discover file-report`
+  include `safe_data_preview` in their `--json` output.
 
 ## v1.4.0
 

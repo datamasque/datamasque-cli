@@ -89,6 +89,14 @@ Pass repeated `--options key=value` for server-side knobs
   then fetch results with `dm discover schema-results <id>` /
   `sdd-report` / `db-report` / `file-report`.
 
+- **Configurable discovery and Safe Data Preview.** Save a discovery config
+  with `dm discover configs create` (start from `dm discover configs defaults`),
+  then run `dm discover schema <connection> --config <name>`. When the config
+  enables in-data discovery with safe data preview, `dm discover schema-results
+  <id> --json` carries a `safe_data_preview` per column — value distributions,
+  patterns, and cardinality worth reading before choosing masks. It is JSON-only; 
+  `file-report --json` exposes the same per locator.
+
 - **`dm rulesets validate --file <file> --type <type>`** runs server-side
   validation without committing the ruleset. Use this before `create`
   when you want a clean failure mode for bad YAML.
