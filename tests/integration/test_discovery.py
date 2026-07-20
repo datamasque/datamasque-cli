@@ -9,6 +9,7 @@ import pytest
 from typer.testing import CliRunner
 
 from datamasque_cli.main import app
+from datamasque_cli.output import ExitCode
 from tests.integration.conftest import DISCOVERY_TEST_NAMESPACE
 
 pytestmark = pytest.mark.integration
@@ -49,7 +50,7 @@ def test_config_create_get_delete_lifecycle(
     assert delete.exit_code == 0
 
     gone = runner.invoke(app, ["discover", "configs", "get", discovery_config_name])
-    assert gone.exit_code == 3
+    assert gone.exit_code == ExitCode.NOT_FOUND
 
 
 def test_config_validate_accepts_default_config(runner: CliRunner, db_discovery_config: Path) -> None:
@@ -63,7 +64,7 @@ def test_config_validate_rejects_invalid_yaml(runner: CliRunner, invalid_discove
     result = runner.invoke(
         app, ["discover", "configs", "validate", "-f", str(invalid_discovery_yaml), "--type", "database"]
     )
-    assert result.exit_code == 4
+    assert result.exit_code == ExitCode.INVALID_INPUT
     assert "invalid" in result.stderr.lower()
 
 
@@ -154,7 +155,7 @@ def test_config_create_without_type_aborts_when_ambiguous(
 
 def test_config_get_missing_is_not_found(runner: CliRunner) -> None:
     result = runner.invoke(app, ["discover", "configs", "get", "dm_int_does_not_exist"])
-    assert result.exit_code == 3
+    assert result.exit_code == ExitCode.NOT_FOUND
 
 
 # --- discovery config libraries ----------------------------------------------
@@ -191,7 +192,7 @@ def test_library_create_get_delete_lifecycle(
     assert delete.exit_code == 0
 
     gone = runner.invoke(app, ["discover", "libraries", "get", discovery_library_name])
-    assert gone.exit_code == 3
+    assert gone.exit_code == ExitCode.NOT_FOUND
 
 
 def test_library_namespace_is_isolated(
@@ -223,14 +224,14 @@ def test_library_namespace_is_isolated(
     assert in_namespace.exit_code == 0
 
     default_namespace = runner.invoke(app, ["discover", "libraries", "get", discovery_library_name])
-    assert default_namespace.exit_code == 3
+    assert default_namespace.exit_code == ExitCode.NOT_FOUND
 
 
 def test_library_validate_rejects_invalid_yaml(runner: CliRunner, invalid_discovery_yaml: Path) -> None:
     result = runner.invoke(
         app, ["discover", "libraries", "validate", "-f", str(invalid_discovery_yaml), "--type", "database"]
     )
-    assert result.exit_code == 4
+    assert result.exit_code == ExitCode.INVALID_INPUT
 
 
 # --- `--config` resolution guards (abort before any run starts) --------------
@@ -257,7 +258,7 @@ def test_schema_config_type_mismatch_aborts(
         ],
     )
     result = runner.invoke(app, ["discover", "schema", any_connection, "--config", discovery_config_name])
-    assert result.exit_code == 4
+    assert result.exit_code == ExitCode.INVALID_INPUT
     assert "database config" in result.stderr
 
 
@@ -282,13 +283,13 @@ def test_file_config_type_mismatch_aborts(
         ],
     )
     result = runner.invoke(app, ["discover", "file", any_connection, "--config", discovery_config_name])
-    assert result.exit_code == 4
+    assert result.exit_code == ExitCode.INVALID_INPUT
     assert "file config" in result.stderr
 
 
 def test_schema_config_not_found_aborts(runner: CliRunner, any_connection: str) -> None:
     result = runner.invoke(app, ["discover", "schema", any_connection, "--config", "dm_int_no_such_config"])
-    assert result.exit_code == 3
+    assert result.exit_code == ExitCode.NOT_FOUND
 
 
 # --- run from config + config snapshot (env-gated) ---------------------------

@@ -5,7 +5,7 @@ import json
 import pytest
 
 from datamasque_cli.output import (
-    EXIT_CODES,
+    EXIT_CODE_BY_ERROR,
     ErrorCode,
     abort,
     is_agent_context,
@@ -186,8 +186,8 @@ def test_abort_maps_code_to_documented_exit_code(code: ErrorCode, expected_exit:
 
 def test_exit_code_table_covers_every_error_code() -> None:
     # Guard: every ErrorCode member must have an exit-code mapping. This trips
-    # if a new ErrorCode is added without updating EXIT_CODES.
-    assert set(EXIT_CODES.keys()) == set(ErrorCode)
+    # if a new ErrorCode is added without updating EXIT_CODE_BY_ERROR.
+    assert set(EXIT_CODE_BY_ERROR.keys()) == set(ErrorCode)
 
 
 def test_print_success_suppressed_in_agent_mode(

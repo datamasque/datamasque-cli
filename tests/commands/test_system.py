@@ -9,6 +9,7 @@ from datamasque.client.models.license import LicenseInfo, SwitchableLicenseMetad
 from typer.testing import CliRunner
 
 from datamasque_cli.main import app
+from datamasque_cli.output import ExitCode
 
 MODULE = "datamasque_cli.commands.system"
 
@@ -143,7 +144,7 @@ def test_admin_install_translates_401_into_conflict(mock_get_unauth: MagicMock, 
         ],
     )
 
-    assert result.exit_code == 8  # ErrorCode.CONFLICT
+    assert result.exit_code == ExitCode.CONFLICT
     assert "already complete" in result.stderr
     assert "dm auth login" in result.stderr
 

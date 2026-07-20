@@ -8,6 +8,7 @@ from datamasque.client.models.status import ValidationStatus
 from typer.testing import CliRunner
 
 from datamasque_cli.main import app
+from datamasque_cli.output import ExitCode
 
 MODULE = "datamasque_cli.commands.discovery_config_libraries"
 
@@ -70,7 +71,7 @@ def test_get_namespace_scopes_lookup(mock_get_client: MagicMock, runner: CliRunn
 
     result = runner.invoke(app, ["discover", "libraries", "get", "finance"])
 
-    assert result.exit_code == 3
+    assert result.exit_code == ExitCode.NOT_FOUND
     client.get_discovery_config_library.assert_not_called()
 
 
@@ -115,5 +116,5 @@ def test_validate_invalid_exits_4(mock_get_client: MagicMock, runner: CliRunner,
 
     result = runner.invoke(app, ["discover", "libraries", "validate", "-f", str(lib), "--type", "database"])
 
-    assert result.exit_code == 4
+    assert result.exit_code == ExitCode.INVALID_INPUT
     assert "duplicate label 'email'" in result.stderr

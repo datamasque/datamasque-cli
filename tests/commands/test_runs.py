@@ -24,6 +24,7 @@ from datamasque_cli.commands.runs import (
     _resolve_ruleset_id,
 )
 from datamasque_cli.main import app
+from datamasque_cli.output import ExitCode
 
 MODULE = "datamasque_cli.commands.runs"
 
@@ -460,7 +461,7 @@ def test_wait_run_failure_exits_1(mock_get_client: MagicMock, _mock_time: MagicM
     client.get_run_info.return_value = _run_info(id=1, status="failed")
 
     result = runner.invoke(app, ["run", "wait", "1"])
-    assert result.exit_code == 1
+    assert result.exit_code == ExitCode.ERROR
 
 
 # -- _print_pretty_logs ----------------------------------------------------

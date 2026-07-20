@@ -12,6 +12,7 @@ from datamasque.client.models.status import ValidationStatus
 from typer.testing import CliRunner
 
 from datamasque_cli.main import app
+from datamasque_cli.output import ExitCode
 
 MODULE = "datamasque_cli.commands.rulesets"
 
@@ -325,7 +326,7 @@ def test_validate_sync_invalid_prints_errors_and_cleans_up(
 
     result = runner.invoke(app, ["rulesets", "validate", "--file", str(yaml_file), "--type", "database"])
 
-    assert result.exit_code == 4  # invalid_input
+    assert result.exit_code == ExitCode.INVALID_INPUT
     assert "unknown mask type 'from_nowhere'" in result.stderr
     assert "line 7" in result.stderr
     assert "tasks must not be empty" in result.stderr
