@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 import os
 import sys
-from enum import StrEnum
+from enum import IntEnum, StrEnum
 from typing import Any, NoReturn
 
 import typer
@@ -51,8 +51,7 @@ class ErrorCode(StrEnum):
     """Stable, machine-readable error categories.
 
     StrEnum members are str subclasses, so the value flows directly into
-    the JSON envelope's `error.code` field via `json.dumps`. Pair with
-    `EXIT_CODES` to map to a process exit status.
+    the JSON envelope's `error.code` field via `json.dumps`.
     """
 
     ERROR = "error"
@@ -65,19 +64,30 @@ class ErrorCode(StrEnum):
     TRANSPORT_ERROR = "transport_error"
 
 
-# Exit-code taxonomy for `abort()`. Stable across minor versions — agents can
-# branch on these to decide whether to retry, prompt the user, or give up.
-# `2` is intentionally skipped because typer/click already uses it for CLI
-# usage errors (unknown flag, missing required arg).
-EXIT_CODES: dict[ErrorCode, int] = {
-    ErrorCode.ERROR: 1,
-    ErrorCode.NOT_FOUND: 3,
-    ErrorCode.INVALID_INPUT: 4,
-    ErrorCode.AMBIGUOUS: 5,
-    ErrorCode.AUTH_REQUIRED: 6,
-    ErrorCode.AUTH_FAILED: 7,
-    ErrorCode.CONFLICT: 8,
-    ErrorCode.TRANSPORT_ERROR: 9,
+class ExitCode(IntEnum):
+    """Every process exit status the CLI can return."""
+
+    OK = 0
+    ERROR = 1
+    USAGE = 2
+    NOT_FOUND = 3
+    INVALID_INPUT = 4
+    AMBIGUOUS = 5
+    AUTH_REQUIRED = 6
+    AUTH_FAILED = 7
+    CONFLICT = 8
+    TRANSPORT_ERROR = 9
+
+
+EXIT_CODE_BY_ERROR: dict[ErrorCode, ExitCode] = {
+    ErrorCode.ERROR: ExitCode.ERROR,
+    ErrorCode.NOT_FOUND: ExitCode.NOT_FOUND,
+    ErrorCode.INVALID_INPUT: ExitCode.INVALID_INPUT,
+    ErrorCode.AMBIGUOUS: ExitCode.AMBIGUOUS,
+    ErrorCode.AUTH_REQUIRED: ExitCode.AUTH_REQUIRED,
+    ErrorCode.AUTH_FAILED: ExitCode.AUTH_FAILED,
+    ErrorCode.CONFLICT: ExitCode.CONFLICT,
+    ErrorCode.TRANSPORT_ERROR: ExitCode.TRANSPORT_ERROR,
 }
 
 
@@ -248,7 +258,7 @@ def abort(message: str, *, code: ErrorCode = ErrorCode.ERROR, hint: str | None =
         print_error(message)
         if hint:
             console.print(f"[dim]Hint: {hint}[/dim]")
-    raise SystemExit(EXIT_CODES[code])
+    raise SystemExit(EXIT_CODE_BY_ERROR[code])
 
 
 def abort_if_invalid(subject: str, is_valid: ValidationStatus | None, errors: list[ValidationErrorDetails]) -> None:

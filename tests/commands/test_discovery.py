@@ -24,6 +24,7 @@ from datamasque.client.models.safe_data_preview import (
 from typer.testing import CliRunner
 
 from datamasque_cli.main import app
+from datamasque_cli.output import ExitCode
 
 MODULE = "datamasque_cli.commands.discovery"
 
@@ -108,7 +109,7 @@ def test_db_report_zip_without_output_aborts_with_hint(mock_get_client: MagicMoc
 
     result = runner.invoke(app, ["discover", "db-report", "42"])
 
-    assert result.exit_code == 4  # invalid_input
+    assert result.exit_code == ExitCode.INVALID_INPUT
     assert "--output" in result.stderr
     assert "PK" not in result.stdout
 
@@ -330,7 +331,7 @@ def test_schema_config_wrong_type_aborts(mock_get_client: MagicMock, runner: Cli
 
     result = runner.invoke(app, ["discover", "schema", "my_db", "--config", "docs"])
 
-    assert result.exit_code == 4  # invalid_input
+    assert result.exit_code == ExitCode.INVALID_INPUT
     client.start_schema_discovery_run_from_config.assert_not_called()
 
 

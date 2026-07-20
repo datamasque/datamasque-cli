@@ -7,6 +7,7 @@ from datamasque.client.models.status import ValidationStatus
 from typer.testing import CliRunner
 
 from datamasque_cli.main import app
+from datamasque_cli.output import ExitCode
 
 MODULE = "datamasque_cli.commands.ruleset_libraries"
 
@@ -83,7 +84,7 @@ def test_validate_library_invalid_prints_errors_and_exits_4(mock_get_client: Mag
 
     result = runner.invoke(app, ["libraries", "validate", "my-lib"])
 
-    assert result.exit_code == 4  # invalid_input
+    assert result.exit_code == ExitCode.INVALID_INPUT
     assert "unknown mask type 'from_nowhere'" in result.stderr
     assert "line 3" in result.stderr
     assert "duplicate anchor 'email'" in result.stderr

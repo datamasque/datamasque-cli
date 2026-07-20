@@ -8,6 +8,7 @@ from datamasque.client.models.status import ValidationStatus
 from typer.testing import CliRunner
 
 from datamasque_cli.main import app
+from datamasque_cli.output import ExitCode
 
 MODULE = "datamasque_cli.commands.discovery_configs"
 
@@ -72,7 +73,7 @@ def test_get_ambiguous_name_aborts(mock_get_client: MagicMock, runner: CliRunner
 
     result = runner.invoke(app, ["discover", "configs", "get", "shared"])
 
-    assert result.exit_code == 5
+    assert result.exit_code == ExitCode.AMBIGUOUS
     client.get_discovery_config.assert_not_called()
 
 
@@ -116,7 +117,7 @@ def test_create_new_requires_type(mock_get_client: MagicMock, runner: CliRunner,
     cfg.write_text("labels: []\n")
 
     missing_type = runner.invoke(app, ["discover", "configs", "create", "--name", "emp", "-f", str(cfg)])
-    assert missing_type.exit_code == 3
+    assert missing_type.exit_code == ExitCode.NOT_FOUND
     client.create_or_update_discovery_config.assert_not_called()
 
     with_type = runner.invoke(
@@ -160,7 +161,7 @@ def test_delete_aborts_when_missing(mock_get_client: MagicMock, runner: CliRunne
 
     result = runner.invoke(app, ["discover", "configs", "delete", "nope", "--yes"])
 
-    assert result.exit_code == 3
+    assert result.exit_code == ExitCode.NOT_FOUND
     client.delete_discovery_config_by_id_if_exists.assert_not_called()
 
 
@@ -193,5 +194,5 @@ def test_validate_invalid_exits_4(mock_get_client: MagicMock, runner: CliRunner,
 
     result = runner.invoke(app, ["discover", "configs", "validate", "-f", str(cfg), "--type", "database"])
 
-    assert result.exit_code == 4
+    assert result.exit_code == ExitCode.INVALID_INPUT
     assert "unknown label 'foo'" in result.stderr

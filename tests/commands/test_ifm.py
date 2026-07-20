@@ -10,6 +10,7 @@ from datamasque.client.exceptions import DataMasqueApiError
 from typer.testing import CliRunner
 
 from datamasque_cli.main import app
+from datamasque_cli.output import ExitCode
 
 MODULE = "datamasque_cli.commands.ifm"
 
@@ -171,7 +172,7 @@ def test_update_aborts_when_no_fields_provided(mock_get_client: MagicMock, runne
 
     result = runner.invoke(app, ["ifm", "update", "p1"])
 
-    assert result.exit_code == 4
+    assert result.exit_code == ExitCode.INVALID_INPUT
     client.patch_ruleset_plan.assert_not_called()
 
 
@@ -236,7 +237,7 @@ def test_mask_soft_failure_exits_nonzero_and_logs(
 
     result = runner.invoke(app, ["ifm", "mask", "p1", "--data", str(data_file)])
 
-    assert result.exit_code == 1
+    assert result.exit_code == ExitCode.ERROR
     assert "Mask failed." in result.stderr
     assert "bad input" in result.stderr
 
@@ -323,7 +324,7 @@ def test_list_aborts_on_api_error(mock_get_client: MagicMock, runner: CliRunner)
 
     result = runner.invoke(app, ["ifm", "list"])
 
-    assert result.exit_code == 1
+    assert result.exit_code == ExitCode.ERROR
     assert "Failed to list IFM ruleset plans" in result.stderr
 
 
@@ -335,7 +336,7 @@ def test_get_aborts_on_api_error(mock_get_client: MagicMock, runner: CliRunner) 
 
     result = runner.invoke(app, ["ifm", "get", "p1"])
 
-    assert result.exit_code == 1
+    assert result.exit_code == ExitCode.ERROR
     assert "Failed to get IFM ruleset plan 'p1'" in result.stderr
 
 
@@ -347,7 +348,7 @@ def test_verify_token_aborts_on_api_error(mock_get_client: MagicMock, runner: Cl
 
     result = runner.invoke(app, ["ifm", "verify-token"])
 
-    assert result.exit_code == 1
+    assert result.exit_code == ExitCode.ERROR
     assert "Failed to verify IFM token" in result.stderr
 
 
@@ -363,7 +364,7 @@ def test_get_404_exits_with_not_found_code(mock_get_client: MagicMock, runner: C
 
     result = runner.invoke(app, ["ifm", "get", "p1"])
 
-    assert result.exit_code == 3
+    assert result.exit_code == ExitCode.NOT_FOUND
     assert "Ruleset plan 'p1' not found." in result.stderr
 
 
@@ -382,7 +383,7 @@ def test_create_400_surfaces_server_error_body(mock_get_client: MagicMock, runne
 
     result = runner.invoke(app, ["ifm", "create", "--name", "smoke", "--file", str(yaml_file)])
 
-    assert result.exit_code == 4
+    assert result.exit_code == ExitCode.INVALID_INPUT
     assert "unknown mask type 'from_invalid'" in _flat(result.stderr)
 
 
@@ -401,7 +402,7 @@ def test_mask_400_surfaces_server_error_body(mock_get_client: MagicMock, runner:
 
     result = runner.invoke(app, ["ifm", "mask", "p1", "--data", str(data_file), "--run-secret", "short"])
 
-    assert result.exit_code == 4
+    assert result.exit_code == ExitCode.INVALID_INPUT
     assert "Run secret length must be at least 20 characters." in _flat(result.stderr)
 
 
@@ -417,7 +418,7 @@ def test_update_404_exits_with_not_found_code(mock_get_client: MagicMock, runner
 
     result = runner.invoke(app, ["ifm", "update", "p1", "--enabled"])
 
-    assert result.exit_code == 3
+    assert result.exit_code == ExitCode.NOT_FOUND
     assert "Ruleset plan 'p1' not found." in result.stderr
 
 
@@ -433,7 +434,7 @@ def test_delete_404_exits_with_not_found_code(mock_get_client: MagicMock, runner
 
     result = runner.invoke(app, ["ifm", "delete", "p1", "--yes"])
 
-    assert result.exit_code == 3
+    assert result.exit_code == ExitCode.NOT_FOUND
     assert "Ruleset plan 'p1' not found." in result.stderr
 
 
@@ -452,7 +453,7 @@ def test_create_409_exits_with_conflict_code(mock_get_client: MagicMock, runner:
 
     result = runner.invoke(app, ["ifm", "create", "--name", "smoke", "--file", str(yaml_file)])
 
-    assert result.exit_code == 8
+    assert result.exit_code == ExitCode.CONFLICT
     assert "already exists" in _flat(result.stderr)
 
 
@@ -464,7 +465,7 @@ def test_get_404_falls_back_when_body_not_json(mock_get_client: MagicMock, runne
 
     result = runner.invoke(app, ["ifm", "get", "p1"])
 
-    assert result.exit_code == 3
+    assert result.exit_code == ExitCode.NOT_FOUND
     assert "Failed to get IFM ruleset plan 'p1'" in result.stderr
 
 
@@ -480,7 +481,7 @@ def test_get_extracts_fastapi_detail_field(mock_get_client: MagicMock, runner: C
 
     result = runner.invoke(app, ["ifm", "get", "p1"])
 
-    assert result.exit_code == 4
+    assert result.exit_code == ExitCode.INVALID_INPUT
     assert "validation failed on field 'name'" in result.stderr
 
 
@@ -539,7 +540,7 @@ def test_get_formats_pydantic_422_detail_list(mock_get_client: MagicMock, runner
 
     result = runner.invoke(app, ["ifm", "get", "p1"])
 
-    assert result.exit_code == 4
+    assert result.exit_code == ExitCode.INVALID_INPUT
     flat = _flat(result.stderr)
     assert "name: field required" in flat
     assert "options.log_level: invalid choice" in flat
