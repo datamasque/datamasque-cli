@@ -9,10 +9,9 @@ Usage:
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from importlib.metadata import version as pkg_version
-from typing import Any
 
-import click
 import typer
 from rich.console import Console
 from typer.main import get_command
@@ -31,6 +30,7 @@ from datamasque_cli.commands import (
     users,
 )
 from datamasque_cli.output import print_json, should_emit_json, stdout_console
+from datamasque_cli.protocols import ArgumentEntry, CommandEntry, CompactEntry, Group, OptionEntry
 
 app = typer.Typer(
     name="dm",
@@ -60,42 +60,38 @@ def version() -> None:
     typer.echo(f"v{pkg_version('datamasque-cli')}")
 
 
-def _walk_commands(group: click.Group, path_prefix: str = "") -> list[dict[str, Any]]:
-    """Walk a click group recursively and yield one entry per leaf command.
-
-    Each entry has `path` (space-separated), `help` (first sentence of the
-    docstring), and `options` (a flat list of flags + arguments).
-    """
-    items: list[dict[str, Any]] = []
+def walk_commands(group: Group, path_prefix: str = "") -> list[CommandEntry]:
+    """Walk a command group recursively and yield one entry per leaf command."""
+    items: list[CommandEntry] = []
     for name, cmd in sorted(group.commands.items()):
         if cmd.hidden:
             continue
         path = f"{path_prefix} {name}".strip()
-        if isinstance(cmd, click.Group):
-            items.extend(_walk_commands(cmd, path))
+        if isinstance(cmd, Group):
+            items.extend(walk_commands(cmd, path))
             continue
-        options: list[dict[str, Any]] = []
+        options: list[OptionEntry | ArgumentEntry] = []
         for param in cmd.params:
-            if isinstance(param, click.Option):
+            if param.param_type_name == "option":
                 options.append(
-                    {
-                        "flags": list(param.opts),
-                        "help": param.help or "",
-                        "required": param.required,
-                        "is_flag": param.is_flag,
-                    }
+                    OptionEntry(
+                        flags=list(param.opts),
+                        help=param.help or "",
+                        required=param.required,
+                        is_flag=param.is_flag,
+                    )
                 )
-            elif isinstance(param, click.Argument):
+            elif param.param_type_name == "argument":
                 options.append(
-                    {
-                        "name": param.name,
-                        "required": param.required,
-                        "is_argument": True,
-                    }
+                    ArgumentEntry(
+                        name=param.name,
+                        required=param.required,
+                        is_argument=True,
+                    )
                 )
         # Take only the first paragraph of help text — keeps the catalog dense.
         help_text = (cmd.help or "").strip().split("\n\n", 1)[0].replace("\n", " ")
-        items.append({"path": path, "help": help_text, "options": options})
+        items.append(CommandEntry(path=path, help=help_text, options=options))
     return items
 
 
@@ -111,13 +107,13 @@ def catalog(
     Designed to be called once at session start so an agent can introspect
     every available subcommand without parsing per-command --help screens.
     """
-    click_app = get_command(app)
-    if not isinstance(click_app, click.Group):
-        # Defensive — a Typer app with subcommands always materialises as a Group.
-        raise RuntimeError("Root command is not a click Group; cannot walk catalog.")
-    items = _walk_commands(click_app)
-    if is_compact:
-        items = [{"path": item["path"], "help": item["help"]} for item in items]
+    root = get_command(app)
+    if not isinstance(root, Group):
+        raise RuntimeError("Root command is not a command group; cannot walk catalog.")
+    commands = walk_commands(root)
+    items: Sequence[CompactEntry] = (
+        [CompactEntry(path=command["path"], help=command["help"]) for command in commands] if is_compact else commands
+    )
 
     if should_emit_json(is_json):
         print_json({"commands": items})

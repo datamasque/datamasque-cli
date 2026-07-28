@@ -96,7 +96,14 @@ def import_config(
 ) -> None:
     """Deprecated alias for `dm rulesets import-bundle`."""
     print_warning("`dm system import` is deprecated; use `dm rulesets import-bundle` instead.")
-    import_bundle(file=file, profile=profile, is_confirmed=is_confirmed)
+    import_bundle(
+        file=file,
+        overwrite_rulesets=False,
+        overwrite_libraries=False,
+        overwrite_seeds=False,
+        profile=profile,
+        is_confirmed=is_confirmed,
+    )
 
 
 @app.command("upload-licence")

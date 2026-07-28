@@ -5,10 +5,22 @@ from __future__ import annotations
 from pathlib import Path
 
 import typer
+from datamasque.client.exceptions import DataMasqueApiError
 from datamasque.client.models.ruleset_library import RulesetLibrary
+from datamasque.client.models.status import ValidationStatus
 
 from datamasque_cli.client import get_client
-from datamasque_cli.output import ErrorCode, abort, abort_if_invalid, print_success, render_output
+from datamasque_cli.output import (
+    ErrorCode,
+    ExitCode,
+    abort,
+    abort_api_error,
+    abort_if_invalid,
+    print_info,
+    print_success,
+    render_output,
+    should_emit_json,
+)
 
 app = typer.Typer(help="Manage ruleset libraries.", no_args_is_help=True)
 
@@ -100,7 +112,15 @@ def delete_library(
     if not is_confirmed:
         typer.confirm(f"Delete library '{label}'?", abort=True)
 
-    client.delete_ruleset_library_by_name_if_exists(name, namespace, force=force)
+    try:
+        client.delete_ruleset_library_by_name_if_exists(name, namespace, force=force)
+    except DataMasqueApiError as exc:
+        abort_api_error(
+            f"Failed to delete library '{label}'",
+            exc,
+            conflict_hint="Re-run with --force to delete it and flag the dependent rulesets for revalidation.",
+        )
+
     print_success(f"Library '{label}' deleted.")
 
 
@@ -127,6 +147,40 @@ def validate_library(
 
     status = validated.is_valid.value if validated.is_valid else "unknown"
     print_success(f"Library '{label}' validation status: {status}")
+
+
+@app.command("status")
+def library_status(
+    name: str = typer.Argument(help="Library name"),
+    namespace: str = typer.Option("", "--namespace", "-n", help="Library namespace"),
+    profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
+    is_json: bool = typer.Option(False, "--json", help="Output as JSON"),
+) -> None:
+    """Show a ruleset library's validation status."""
+    client = get_client(profile)
+    lib = client.get_ruleset_library_by_name(name, namespace)
+
+    if lib is None:
+        label = f"{namespace}/{name}" if namespace else name
+        abort(f"Library '{label}' not found.", code=ErrorCode.NOT_FOUND)
+
+    status = lib.is_valid.value if lib.is_valid else "unknown"
+    errors = lib.validation_errors or []
+    data: dict[str, object] = {
+        "namespace": lib.namespace,
+        "name": lib.name,
+        "status": status,
+    }
+    if should_emit_json(is_json):
+        data["errors"] = [error.model_dump(mode="json") for error in errors]
+    else:
+        data["errors"] = "; ".join(error.message for error in errors)
+    render_output(data, is_json=is_json, title=f"Library: {lib.name}")
+
+    if lib.is_valid is ValidationStatus.in_progress:
+        print_info("Still validating — run this command again shortly.")
+    if lib.is_valid is ValidationStatus.invalid:
+        raise SystemExit(ExitCode.INVALID_INPUT)
 
 
 @app.command("usage")

@@ -7,6 +7,7 @@ from pathlib import Path
 
 import typer
 from datamasque.client import DataMasqueClient, RunId
+from datamasque.client.exceptions import DataMasqueApiError
 from datamasque.client.models.connection import ConnectionId
 from datamasque.client.models.discovery import (
     FileDataDiscoveryFromConfigRequest,
@@ -18,7 +19,15 @@ from datamasque.client.models.discovery_config import DiscoveryConfigId, Discove
 
 from datamasque_cli.client import get_client
 from datamasque_cli.commands import discovery_config_libraries, discovery_configs
-from datamasque_cli.output import ErrorCode, abort, print_json, print_success, render_output, should_emit_json
+from datamasque_cli.output import (
+    ErrorCode,
+    abort,
+    abort_api_error,
+    print_json,
+    print_success,
+    render_output,
+    should_emit_json,
+)
 
 app = typer.Typer(help="Data discovery operations.", no_args_is_help=True)
 app.add_typer(discovery_configs.app, name="configs")
@@ -77,6 +86,7 @@ def schema_discovery(
         None, "--config", "-c", help="Run with a saved database discovery config (configurable discovery)"
     ),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
+    is_json: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
     """Start a schema-discovery run on a connection.
 
@@ -87,20 +97,25 @@ def schema_discovery(
     client = get_client(profile)
     conn_id = _resolve_connection_id(client, connection)
 
-    if config is not None:
-        config_id = _resolve_discovery_config_id(client, config, DiscoveryConfigType.database)
-        from_config = SchemaDiscoveryFromConfigRequest(connection=ConnectionId(conn_id), discovery_config=config_id)
-        run_id = client.start_schema_discovery_run_from_config(from_config)
-        source = f"config '{config}'"
-    else:
-        request = SchemaDiscoveryRequest(connection=ConnectionId(conn_id))
-        run_id = client.start_schema_discovery_run(request)
-        source = "default discovery"
+    try:
+        if config is not None:
+            config_id = _resolve_discovery_config_id(client, config, DiscoveryConfigType.database)
+            from_config = SchemaDiscoveryFromConfigRequest(connection=ConnectionId(conn_id), discovery_config=config_id)
+            run_id = client.start_schema_discovery_run_from_config(from_config)
+            source = f"config '{config}'"
+        else:
+            request = SchemaDiscoveryRequest(connection=ConnectionId(conn_id))
+            run_id = client.start_schema_discovery_run(request)
+            source = "default discovery"
+    except DataMasqueApiError as exc:
+        abort_api_error(f"Failed to start schema discovery on '{connection}'", exc)
 
     print_success(
         f"Schema discovery run {run_id} started for connection '{connection}' ({source}). "
         f"Once finished, list results with: dm discover schema-results {run_id}"
     )
+    if should_emit_json(is_json):
+        print_json({"id": int(run_id), "status": "queued"})
 
 
 @app.command("file")
@@ -110,6 +125,7 @@ def file_discovery(
         None, "--config", "-c", help="Run with a saved file discovery config (configurable discovery)"
     ),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
+    is_json: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
     """Start a file-data-discovery run on a file connection.
 
@@ -119,20 +135,27 @@ def file_discovery(
     client = get_client(profile)
     conn_id = _resolve_connection_id(client, connection)
 
-    if config is not None:
-        config_id = _resolve_discovery_config_id(client, config, DiscoveryConfigType.file)
-        from_config = FileDataDiscoveryFromConfigRequest(connection=ConnectionId(conn_id), discovery_config=config_id)
-        run_id = client.start_file_data_discovery_run_from_config(from_config)
-        source = f"config '{config}'"
-    else:
-        request = FileDataDiscoveryRequest(connection=ConnectionId(conn_id))
-        run_id = client.start_file_data_discovery_run(request)
-        source = "default discovery"
+    try:
+        if config is not None:
+            config_id = _resolve_discovery_config_id(client, config, DiscoveryConfigType.file)
+            from_config = FileDataDiscoveryFromConfigRequest(
+                connection=ConnectionId(conn_id), discovery_config=config_id
+            )
+            run_id = client.start_file_data_discovery_run_from_config(from_config)
+            source = f"config '{config}'"
+        else:
+            request = FileDataDiscoveryRequest(connection=ConnectionId(conn_id))
+            run_id = client.start_file_data_discovery_run(request)
+            source = "default discovery"
+    except DataMasqueApiError as exc:
+        abort_api_error(f"Failed to start file data discovery on '{connection}'", exc)
 
     print_success(
         f"File data discovery run {run_id} started for connection '{connection}' ({source}). "
         f"Once finished, download the report with: dm discover file-report {run_id}"
     )
+    if should_emit_json(is_json):
+        print_json({"id": int(run_id), "status": "queued"})
 
 
 @app.command("schema-results")

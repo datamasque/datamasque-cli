@@ -148,7 +148,8 @@ dm rulesets create --name <n> --file rules.yaml --type file  # Force a type
 dm rulesets delete <name> [--type file|database]  # Delete a ruleset
 dm rulesets generate --file request.json          # Generate from schema
 dm rulesets generate --file req.json -o out.yaml  # Generate to file
-dm rulesets validate --file rules.yaml            # Validate against server
+dm rulesets validate --file rules.yaml            # Validate against server (YAML under 60 KiB)
+dm rulesets status <name>                         # Validation status; poll after creating YAML of 60 KiB+
 dm rulesets export-bundle -o bundle.zip           # Export rulesets + libraries + seeds
 dm rulesets import-bundle --file bundle.zip       # Import a previously exported bundle
 dm rulesets import-bundle -f bundle.zip --overwrite-rulesets --overwrite-libraries  # Replace existing entries
@@ -164,6 +165,7 @@ dm libraries create --name <n> --file lib.yaml    # Create/update from file
 dm libraries create --name <n> --file lib.yaml --namespace pii  # With namespace
 dm libraries delete <name>                        # Delete a library
 dm libraries validate <name>                      # Re-validate against current server schema
+dm libraries status <name>                        # Validation status; poll after creating YAML of 60 KiB+
 dm libraries usage <name>                         # Show rulesets using it
 ```
 
@@ -218,9 +220,11 @@ dm users delete <username>                      # Delete a user
 ```console
 dm discover schema <connection>                      # Schema discovery (built-in keyword-driven)
 dm discover schema <connection> --config <name>      # Schema discovery from a saved database config
+dm discover schema <connection> --json               # {"id": <run-id>, "status": "queued"}
 dm discover schema-results <run-id>                  # List schema-discovery results once the run finishes
 dm discover file <connection>                        # File data discovery (built-in keyword-driven)
 dm discover file <connection> --config <name>        # File data discovery from a saved file config
+dm discover file <connection> --json                 # {"id": <run-id>, "status": "queued"}
 dm discover sdd-report <run-id>                      # Sensitive data discovery report
 dm discover db-report <run-id>                       # Database discovery CSV
 dm discover file-report <run-id>                     # File discovery report
@@ -235,17 +239,21 @@ dm discover configs get <name> [--type database] [--yaml]          # Show detail
 dm discover configs defaults [--type database|file] -o cfg.yaml    # Built-in default as a starting point
 dm discover configs create --name <n> --type database -f cfg.yaml  # Create/update from YAML
 dm discover configs delete <name> [--type database]                # Delete a config
-dm discover configs validate -f cfg.yaml --type database           # Validate a YAML file against the server
+dm discover configs validate -f cfg.yaml --type database           # Validate against server (YAML under 60 KiB)
+dm discover configs status <name> [--type database]                # Validation status; poll after creating YAML of 60 KiB+
 ```
 
 #### Discovery config libraries
 
+Libraries are untyped — the same library can be imported by both database and file discovery configs.
+
 ```console
-dm discover libraries list [--type database|file]
-dm discover libraries get <name> [--type database] [--namespace org] [--yaml]
-dm discover libraries create --name <n> --type database --namespace org -f lib.yaml
-dm discover libraries delete <name> [--type database] [--namespace org] [--force]  # --force if imported by configs
-dm discover libraries validate -f lib.yaml --type database
+dm discover libraries list
+dm discover libraries get <name> [--namespace org] [--yaml]
+dm discover libraries create --name <n> --namespace org -f lib.yaml
+dm discover libraries delete <name> [--namespace org] [--force]    # --force if imported by configs
+dm discover libraries validate -f lib.yaml
+dm discover libraries status <name> [--namespace org]
 ```
 
 ### Seeds

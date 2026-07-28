@@ -8,6 +8,7 @@ from pathlib import Path
 
 import typer
 from datamasque.client import DataMasqueClient
+from datamasque.client.exceptions import DataMasqueApiError
 from datamasque.client.models.connection import (
     AzureConnectionConfig,
     ConnectionConfig,
@@ -22,7 +23,14 @@ from datamasque.client.models.connection import (
 )
 
 from datamasque_cli.client import get_client
-from datamasque_cli.output import ErrorCode, abort, print_success, redact_sensitive_fields, render_output
+from datamasque_cli.output import (
+    ErrorCode,
+    abort,
+    abort_api_error,
+    print_success,
+    redact_sensitive_fields,
+    render_output,
+)
 
 
 class ConnectionType(StrEnum):
@@ -298,7 +306,10 @@ def test_connection(
     if match is None:
         abort(f"Connection '{name}' not found.", code=ErrorCode.NOT_FOUND)
 
-    response = client.make_request("POST", f"/api/connections/{match.id}/test/", data={})
+    try:
+        response = client.make_request("POST", f"/api/connections/{match.id}/test/", data={})
+    except DataMasqueApiError as exc:
+        abort_api_error(f"Connection '{match.name}' is not reachable", exc)
     body = response.json() if response.content else {}
     warning = body.get("message") if isinstance(body, dict) else None
 
@@ -347,7 +358,11 @@ def update_connection(
     if not updates:
         abort("Pass at least one field to update (e.g. --password, --host).", code=ErrorCode.INVALID_INPUT)
 
-    client.make_request("PATCH", f"/api/connections/{match.id}/", data=updates)
+    payload = dict(updates)
+    if "password" in payload:
+        payload["dbpassword"] = payload.pop("password")
+
+    client.make_request("PATCH", f"/api/connections/{match.id}/", data=payload)
     print_success(f"Connection '{match.name}' updated: {', '.join(updates)}.")
 
 

@@ -183,11 +183,10 @@ def discovery_library_name(runner: CliRunner) -> Iterator[str]:
     name = f"dm_int_{uuid.uuid4().hex[:8]}"
     yield name
     for namespace in ("", DISCOVERY_TEST_NAMESPACE):
-        for config_type in ("file", "database"):
-            args = ["discover", "libraries", "delete", name, "--type", config_type, "--yes", "--force"]
-            if namespace:
-                args += ["--namespace", namespace]
-            runner.invoke(app, args)
+        args = ["discover", "libraries", "delete", name, "--yes", "--force"]
+        if namespace:
+            args += ["--namespace", namespace]
+        runner.invoke(app, args)
 
 
 @pytest.fixture()

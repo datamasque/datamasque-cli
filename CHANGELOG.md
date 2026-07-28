@@ -3,24 +3,28 @@
 ## v1.5.0
 
 ### Added
-- Support for datamasque-python 1.1.8.
+- Support for datamasque-python 1.2.1.
   - `dm discover schema-results` handles matches with no label.
-  - Validation errors are now printed.
-  - `dm rulesets validate` and `dm libraries validate` now fail (return 4)
-    on invalid rulesets/libraries.
-  - `dm discover db-report` writes a zip archive returned for large reports to
-    `--output`, aborting with a hint rather than dumping binary data to stdout.
+  - `dm rulesets validate` and `dm libraries validate` print validation
+    errors for invalid YAML.
 - Support for Configurable Discovery:
-  - `dm discover configs` — list, get, defaults, create, delete, and validate
-    discovery configs (`database` or `file`).
-  - `dm discover libraries` — list, get, create, delete, and validate discovery
-    config libraries.
+  - `dm discover configs` — list, get, defaults, create, delete, validate,
+    and status for discovery configs (`database` or `file`).
+  - `dm discover libraries` — list, get, create, delete, validate, and status
+    for discovery config libraries (untyped; shared by both config types).
   - `dm discover schema --config <name>` and `dm discover file
     [--config <name>]` start discovery runs with or without a specific config.
   - `dm discover config-snapshot <run-id>` downloads the discovery config a run
     actually used.
+- `dm rulesets status` and `dm libraries status` — show a stored ruleset's or
+  library's validation state and errors.
+- `dm rulesets validate` and `dm discover configs validate` refuse YAML of
+  60 KiB or larger, which the server validates asynchronously; create it and
+  poll `status` instead.
 - Safe Data Preview: `dm discover schema-results` and `dm discover file-report`
   include `safe_data_preview` in their `--json` output.
+- `dm rulesets generate`, `dm connections update --password`, and the
+  deprecated `dm system import` no longer fail.
 
 ## v1.4.0
 

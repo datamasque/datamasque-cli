@@ -4,6 +4,7 @@ import json
 from unittest.mock import MagicMock, patch
 
 import pytest
+from datamasque.client.exceptions import DataMasqueApiError
 from datamasque.client.models.connection import (
     DatabaseConnectionConfig,
     DatabaseType,
@@ -15,6 +16,7 @@ from typer.testing import CliRunner
 
 from datamasque_cli.commands.connections import _format_role
 from datamasque_cli.main import app
+from datamasque_cli.output import ExitCode
 
 MODULE = "datamasque_cli.commands.connections"
 
@@ -274,6 +276,22 @@ def test_test_connection_posts_to_test_endpoint(
 
 
 @patch(f"{MODULE}.get_client")
+def test_test_connection_reports_unreachable_target(
+    mock_get_client: MagicMock, mock_client: MagicMock, runner: CliRunner
+) -> None:
+    mock_get_client.return_value = mock_client
+    mock_response = MagicMock(status_code=400)
+    mock_response.json.return_value = {"detail": 'DNS lookup for "postgres-dev" failed.'}
+    mock_client.make_request.side_effect = DataMasqueApiError("boom", response=mock_response)
+
+    result = runner.invoke(app, ["connections", "test", "my_conn"])
+
+    assert result.exit_code == ExitCode.ERROR
+    assert 'DNS lookup for "postgres-dev" failed.' in " ".join(result.stderr.split())
+    assert "Traceback" not in result.stderr
+
+
+@patch(f"{MODULE}.get_client")
 def test_test_connection_aborts_when_missing(
     mock_get_client: MagicMock, mock_client: MagicMock, runner: CliRunner
 ) -> None:
@@ -302,7 +320,7 @@ def test_update_connection_patches_changed_fields(
     mock_client.make_request.assert_called_once_with(
         "PATCH",
         "/api/connections/1/",
-        data={"host": "db2.example.com", "password": "new-pw"},
+        data={"host": "db2.example.com", "dbpassword": "new-pw"},
     )
 
 

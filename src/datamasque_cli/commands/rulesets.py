@@ -10,18 +10,24 @@ import typer
 from datamasque.client import DataMasqueClient
 from datamasque.client.base import UploadFile
 from datamasque.client.exceptions import DataMasqueApiError
+from datamasque.client.models.discovery import FileRulesetGenerationRequest, RulesetGenerationRequest
 from datamasque.client.models.ruleset import Ruleset, RulesetType
+from datamasque.client.models.status import ValidationStatus
+from pydantic import ValidationError
 
 from datamasque_cli.client import get_client
 from datamasque_cli.output import (
     ErrorCode,
+    ExitCode,
     abort,
+    abort_if_async_validation,
     abort_if_invalid,
     print_error,
     print_info,
     print_success,
     print_warning,
     render_output,
+    should_emit_json,
 )
 
 app = typer.Typer(help="Manage masking rulesets.", no_args_is_help=True)
@@ -39,8 +45,8 @@ def _find_by_name(
     return matches
 
 
-def _pick_single(matches: list[Ruleset], name: str) -> Ruleset:
-    """Return the sole match or abort with a disambiguation message."""
+def _collapse_to_one_or_abort(matches: list[Ruleset], name: str) -> Ruleset:
+    """Return the single ruleset matching `name`, or abort asking for `--type`."""
     if not matches:
         abort(f"Ruleset '{name}' not found.", code=ErrorCode.NOT_FOUND)
     if len(matches) > 1:
@@ -55,7 +61,7 @@ def _pick_single(matches: list[Ruleset], name: str) -> Ruleset:
 
 @app.command("list")
 def list_rulesets(
-    ruleset_type: str | None = typer.Option(None, "--type", "-t", help="Filter by type: database or file"),
+    ruleset_type: RulesetType | None = typer.Option(None, "--type", "-t", help="Filter by type: database or file"),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
     is_json: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
@@ -64,8 +70,7 @@ def list_rulesets(
     rulesets = client.list_rulesets()
 
     if ruleset_type is not None:
-        wanted = RulesetType(ruleset_type)
-        rulesets = [rs for rs in rulesets if rs.ruleset_type == wanted]
+        rulesets = [rs for rs in rulesets if rs.ruleset_type == ruleset_type]
 
     data = [
         {
@@ -82,15 +87,16 @@ def list_rulesets(
 @app.command("get")
 def get_ruleset(
     name: str = typer.Argument(help="Ruleset name"),
-    ruleset_type: str | None = typer.Option(None, "--type", "-t", help="Required when two rulesets share a name"),
+    ruleset_type: RulesetType | None = typer.Option(
+        None, "--type", "-t", help="Required when two rulesets share a name"
+    ),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
     is_yaml: bool = typer.Option(False, "--yaml", help="Output raw YAML content only"),
     is_json: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
     """Show a ruleset's details or YAML content."""
     client = get_client(profile)
-    wanted = RulesetType(ruleset_type) if ruleset_type is not None else None
-    match = _pick_single(_find_by_name(client, name, wanted), name)
+    match = _collapse_to_one_or_abort(_find_by_name(client, name, ruleset_type), name)
 
     # `list_rulesets` omits the YAML body for performance; fetch the single ruleset
     # to populate `yaml` via the Ruleset pydantic model's `config_yaml` alias.
@@ -114,7 +120,7 @@ def get_ruleset(
 def create_ruleset(
     name: str = typer.Option(..., help="Ruleset name"),
     file: Path = typer.Option(..., "--file", "-f", help="Path to YAML ruleset file", exists=True, readable=True),
-    ruleset_type: str | None = typer.Option(
+    ruleset_type: RulesetType | None = typer.Option(
         None,
         "--type",
         "-t",
@@ -133,10 +139,9 @@ def create_ruleset(
     """
     client = get_client(profile)
     existing = _find_by_name(client, name)
-    explicit = RulesetType(ruleset_type) if ruleset_type is not None else None
 
-    if explicit is not None:
-        rs_type = explicit
+    if ruleset_type is not None:
+        rs_type = ruleset_type
     elif len(existing) == 1:
         rs_type = existing[0].ruleset_type
         print_info(f"Updating existing {rs_type.value}-type ruleset '{name}'.")
@@ -163,14 +168,15 @@ def create_ruleset(
 @app.command("delete")
 def delete_ruleset(
     name: str = typer.Argument(help="Ruleset name to delete"),
-    ruleset_type: str | None = typer.Option(None, "--type", "-t", help="Required when two rulesets share a name"),
+    ruleset_type: RulesetType | None = typer.Option(
+        None, "--type", "-t", help="Required when two rulesets share a name"
+    ),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
     is_confirmed: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ) -> None:
     """Delete a ruleset by name."""
     client = get_client(profile)
-    wanted = RulesetType(ruleset_type) if ruleset_type is not None else None
-    match = _pick_single(_find_by_name(client, name, wanted), name)
+    match = _collapse_to_one_or_abort(_find_by_name(client, name, ruleset_type), name)
 
     if not is_confirmed:
         typer.confirm(f"Delete ruleset '{name}' ({match.ruleset_type.value})?", abort=True)
@@ -183,7 +189,7 @@ def delete_ruleset(
 @app.command("validate")
 def validate_ruleset(
     file: Path = typer.Option(..., "--file", "-f", help="Path to YAML ruleset file", exists=True, readable=True),
-    ruleset_type: str = typer.Option(
+    ruleset_type: RulesetType = typer.Option(
         ...,
         "--type",
         "-t",
@@ -195,14 +201,21 @@ def validate_ruleset(
 
     Creates a temporary ruleset to trigger server-side validation,
     then deletes it. Reports any validation errors.
+
+    Note that rulesets over 60 KiB validate asynchronously and cannot be validated here.
     """
     yaml_content = file.read_text()
-    rs_type = RulesetType(ruleset_type)
+    abort_if_async_validation(
+        yaml_content,
+        subject=f"Ruleset '{file.name}'",
+        create_command=f"dm rulesets create --name <name> --type {ruleset_type.value} -f {file}",
+        status_command="dm rulesets status <name>",
+    )
     # `uuid` guards against collisions between concurrent `validate` runs.
     temp_name = f"__dm_cli_validate_{uuid.uuid4().hex}"
 
     client = get_client(profile)
-    ruleset = Ruleset(name=temp_name, yaml=yaml_content, ruleset_type=rs_type)
+    ruleset = Ruleset(name=temp_name, yaml=yaml_content, ruleset_type=ruleset_type)
 
     try:
         created = client.create_or_update_ruleset(ruleset)
@@ -213,8 +226,9 @@ def validate_ruleset(
     # `try/finally` so a Ctrl-C or unexpected exception between create and
     # delete still cleans up the temp ruleset on the server.
     try:
-        abort_if_invalid(f"Ruleset '{file.name}' ({rs_type.value})", created.is_valid, created.validation_errors)
-        print_success(f"Ruleset '{file.name}' ({rs_type.value}) is valid.")
+        abort_if_invalid(f"Ruleset '{file.name}' ({ruleset_type.value})", created.is_valid, created.validation_errors)
+        status = created.is_valid.value if created.is_valid else "unknown"
+        print_success(f"Ruleset '{file.name}' ({ruleset_type.value}) validation status: {status}")
     finally:
         if created.id is not None:
             try:
@@ -297,6 +311,38 @@ def import_bundle(
             render_output(summary, is_json=False, title="Import summary")
 
 
+@app.command("status")
+def ruleset_status(
+    name: str = typer.Argument(help="Ruleset name"),
+    ruleset_type: RulesetType | None = typer.Option(
+        None, "--type", "-t", help="Required when two rulesets share a name"
+    ),
+    profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
+    is_json: bool = typer.Option(False, "--json", help="Output as JSON"),
+) -> None:
+    """Show a ruleset's validation status."""
+    client = get_client(profile)
+    match = _collapse_to_one_or_abort(_find_by_name(client, name, ruleset_type), name)
+
+    status = match.is_valid.value if match.is_valid else "unknown"
+    errors = match.validation_errors or []
+    data: dict[str, object] = {
+        "name": match.name,
+        "type": match.ruleset_type.value,
+        "status": status,
+    }
+    if should_emit_json(is_json):
+        data["errors"] = [error.model_dump(mode="json") for error in errors]
+    else:
+        data["errors"] = "; ".join(error.message for error in errors)
+    render_output(data, is_json=is_json, title=f"Ruleset: {match.name}")
+
+    if match.is_valid is ValidationStatus.in_progress:
+        print_info("Still validating — run this command again shortly.")
+    if match.is_valid is ValidationStatus.invalid:
+        raise SystemExit(ExitCode.INVALID_INPUT)
+
+
 @app.command("generate")
 def generate_ruleset(
     request_file: Path = typer.Option(
@@ -311,12 +357,15 @@ def generate_ruleset(
     The request JSON format matches the DataMasque API's /api/generate-ruleset/v2/ endpoint.
     """
     client = get_client(profile)
-    generation_request = json.loads(request_file.read_text())
+    raw_request = json.loads(request_file.read_text())
 
-    if is_file_ruleset:
-        yaml_content = client.generate_file_ruleset(generation_request)
-    else:
-        yaml_content = client.generate_ruleset(generation_request)
+    try:
+        if is_file_ruleset:
+            yaml_content = client.generate_file_ruleset(FileRulesetGenerationRequest.model_validate(raw_request))
+        else:
+            yaml_content = client.generate_ruleset(RulesetGenerationRequest.model_validate(raw_request))
+    except ValidationError as exc:
+        abort(f"Invalid generation request in {request_file}: {exc}", code=ErrorCode.INVALID_INPUT)
 
     if output is not None:
         output.write_text(yaml_content)

@@ -15,9 +15,11 @@ import json
 import os
 import sys
 from enum import IntEnum, StrEnum
+from http import HTTPStatus
 from typing import Any, NoReturn
 
 import typer
+from datamasque.client.exceptions import DataMasqueApiError
 from datamasque.client.models.status import ValidationErrorDetails, ValidationStatus
 from rich.console import Console
 from rich.table import Table
@@ -261,6 +263,20 @@ def abort(message: str, *, code: ErrorCode = ErrorCode.ERROR, hint: str | None =
     raise SystemExit(EXIT_CODE_BY_ERROR[code])
 
 
+def abort_api_error(prefix: str, exc: DataMasqueApiError, *, conflict_hint: str | None = None) -> NoReturn:
+    """Abort with the admin server's own explanation of a failed request."""
+    try:
+        body = exc.response.json()
+    except ValueError:
+        body = None
+    detail = body.get("detail") if isinstance(body, dict) else None
+    reason = detail if isinstance(detail, str) else str(exc)
+
+    if exc.response.status_code == HTTPStatus.CONFLICT:
+        abort(reason, code=ErrorCode.CONFLICT, hint=conflict_hint)
+    abort(f"{prefix}: {reason}", code=ErrorCode.ERROR)
+
+
 def abort_if_invalid(subject: str, is_valid: ValidationStatus | None, errors: list[ValidationErrorDetails]) -> None:
     """Print each server-side validation error for `subject` and exit, if it failed validation."""
     if is_valid is not ValidationStatus.invalid and not errors:
@@ -269,3 +285,17 @@ def abort_if_invalid(subject: str, is_valid: ValidationStatus | None, errors: li
         location = f" (line {error.line_number})" if error.line_number is not None else ""
         print_error(f"{error.message}{location}")
     abort(f"{subject} is invalid.", code=ErrorCode.INVALID_INPUT)
+
+
+def abort_if_async_validation(yaml_content: str, *, subject: str, create_command: str, status_command: str) -> None:
+    """Abort when `yaml_content` is too large for the server to validate synchronously."""
+    kib = 1024
+    max_sync_kib = 60
+    size = len(yaml_content.encode("utf-8"))
+    if size < max_sync_kib * kib:
+        return
+    abort(
+        f"{subject} is {size // kib} KiB; validation for YAML of {max_sync_kib} KiB or larger runs asynchronously.",
+        code=ErrorCode.INVALID_INPUT,
+        hint=f"Create it with `{create_command}`, then check `{status_command}` until validation finishes.",
+    )

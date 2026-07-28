@@ -6,11 +6,21 @@ from pathlib import Path
 
 import typer
 from datamasque.client import DataMasqueClient
+from datamasque.client.exceptions import DataMasqueArgumentError
 from datamasque.client.models.discovery_config import DiscoveryConfig, DiscoveryConfigType
-from datamasque.client.models.status import ValidationStatus
+from datamasque.client.models.status import ValidationErrorDetails, ValidationStatus
 
 from datamasque_cli.client import get_client
-from datamasque_cli.output import ErrorCode, abort, print_info, print_success, render_output
+from datamasque_cli.output import (
+    ErrorCode,
+    ExitCode,
+    abort,
+    abort_if_async_validation,
+    abort_if_invalid,
+    print_info,
+    print_success,
+    render_output,
+)
 
 app = typer.Typer(help="Manage discovery configs (configurable discovery).", no_args_is_help=True)
 
@@ -27,8 +37,8 @@ def _find_by_name(
     return matches
 
 
-def _pick_single(matches: list[DiscoveryConfig], name: str) -> DiscoveryConfig:
-    """Return the sole match or abort with a disambiguation message."""
+def _collapse_to_one_or_abort(matches: list[DiscoveryConfig], name: str) -> DiscoveryConfig:
+    """Return the single discovery config matching `name`, or abort asking for `--type`."""
     if not matches:
         abort(f"Discovery config '{name}' not found.", code=ErrorCode.NOT_FOUND)
     if len(matches) > 1:
@@ -43,7 +53,9 @@ def _pick_single(matches: list[DiscoveryConfig], name: str) -> DiscoveryConfig:
 
 @app.command("list")
 def list_configs(
-    config_type: str | None = typer.Option(None, "--type", "-t", help="Filter by type: database or file"),
+    config_type: DiscoveryConfigType | None = typer.Option(
+        None, "--type", "-t", help="Filter by type: database or file"
+    ),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
     is_json: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
@@ -52,8 +64,7 @@ def list_configs(
     configs = client.list_discovery_configs()
 
     if config_type is not None:
-        wanted = DiscoveryConfigType(config_type)
-        configs = [c for c in configs if c.config_type is wanted]
+        configs = [c for c in configs if c.config_type is config_type]
 
     data = [
         {
@@ -71,15 +82,16 @@ def list_configs(
 @app.command("get")
 def get_config(
     name: str = typer.Argument(help="Discovery config name"),
-    config_type: str | None = typer.Option(None, "--type", "-t", help="Required when two configs share a name"),
+    config_type: DiscoveryConfigType | None = typer.Option(
+        None, "--type", "-t", help="Required when two configs share a name"
+    ),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
     is_yaml: bool = typer.Option(False, "--yaml", help="Output raw YAML content only"),
     is_json: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
     """Show a discovery config's details or YAML content."""
     client = get_client(profile)
-    wanted = DiscoveryConfigType(config_type) if config_type is not None else None
-    match = _pick_single(_find_by_name(client, name, wanted), name)
+    match = _collapse_to_one_or_abort(_find_by_name(client, name, config_type), name)
 
     assert match.id is not None
     full = client.get_discovery_config(match.id)
@@ -101,20 +113,21 @@ def get_config(
 
 @app.command("defaults")
 def config_defaults(
-    config_type: str = typer.Option("database", "--type", "-t", help="Config type: database or file"),
+    config_type: DiscoveryConfigType = typer.Option(
+        DiscoveryConfigType.database, "--type", "-t", help="Config type: database or file"
+    ),
     output: Path | None = typer.Option(None, "--output", "-o", help="Write YAML to this path"),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Print the server's built-in default discovery config as YAML."""
     client = get_client(profile)
-    wanted = DiscoveryConfigType(config_type)
     # `get_default_discovery_config_yaml` takes no config type, so call `make_request` to pass one.
-    response = client.make_request("GET", "/api/discovery/configs/defaults/", params={"config_type": wanted.value})
+    response = client.make_request("GET", "/api/discovery/configs/defaults/", params={"config_type": config_type.value})
     yaml_content = response.content.decode("utf-8")
 
     if output is not None:
         output.write_text(yaml_content)
-        print_success(f"Default {wanted.value} discovery config written to {output}")
+        print_success(f"Default {config_type.value} discovery config written to {output}")
         return
 
     typer.echo(yaml_content)
@@ -124,7 +137,7 @@ def config_defaults(
 def create_config(
     name: str = typer.Option(..., help="Discovery config name"),
     file: Path = typer.Option(..., "--file", "-f", help="Path to YAML config file", exists=True, readable=True),
-    config_type: str | None = typer.Option(
+    config_type: DiscoveryConfigType | None = typer.Option(
         None,
         "--type",
         "-t",
@@ -142,10 +155,9 @@ def create_config(
     """
     client = get_client(profile)
     existing = _find_by_name(client, name)
-    explicit = DiscoveryConfigType(config_type) if config_type is not None else None
 
-    if explicit is not None:
-        cfg_type = explicit
+    if config_type is not None:
+        cfg_type = config_type
     elif len(existing) == 1:
         cfg_type = existing[0].config_type
         print_info(f"Updating existing {cfg_type.value}-type discovery config '{name}'.")
@@ -165,21 +177,25 @@ def create_config(
 
     yaml_content = file.read_text()
     config = DiscoveryConfig(name=name, yaml=yaml_content, config_type=cfg_type)
-    client.create_or_update_discovery_config(config)
+    try:
+        client.create_or_update_discovery_config(config)
+    except DataMasqueArgumentError:
+        abort(f"{file} contains no YAML content.", code=ErrorCode.INVALID_INPUT)
     print_success(f"Discovery config '{name}' ({cfg_type.value}) created/updated.")
 
 
 @app.command("delete")
 def delete_config(
     name: str = typer.Argument(help="Discovery config name to delete"),
-    config_type: str | None = typer.Option(None, "--type", "-t", help="Required when two configs share a name"),
+    config_type: DiscoveryConfigType | None = typer.Option(
+        None, "--type", "-t", help="Required when two configs share a name"
+    ),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
     is_confirmed: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ) -> None:
     """Delete a discovery config by name."""
     client = get_client(profile)
-    wanted = DiscoveryConfigType(config_type) if config_type is not None else None
-    match = _pick_single(_find_by_name(client, name, wanted), name)
+    match = _collapse_to_one_or_abort(_find_by_name(client, name, config_type), name)
 
     if not is_confirmed:
         typer.confirm(f"Delete discovery config '{name}' ({match.config_type.value})?", abort=True)
@@ -192,22 +208,60 @@ def delete_config(
 @app.command("validate")
 def validate_config(
     file: Path = typer.Option(..., "--file", "-f", help="Path to YAML config file", exists=True, readable=True),
-    config_type: str = typer.Option(..., "--type", "-t", help="Config type: database or file"),
+    config_type: DiscoveryConfigType = typer.Option(..., "--type", "-t", help="Config type: database or file"),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
-    """Validate a discovery config YAML file against the DataMasque server."""
+    """Validate a discovery config YAML file against the DataMasque server.
+
+    Note that configs over 60 KB validate asynchronously and cannot be validated here.
+    """
     yaml_content = file.read_text()
-    cfg_type = DiscoveryConfigType(config_type)
+    abort_if_async_validation(
+        yaml_content,
+        subject=f'Discovery config "{file.name}"',
+        create_command=f"dm discover configs create --name <name> --type {config_type.value} -f {file}",
+        status_command="dm discover configs status <name>",
+    )
 
     client = get_client(profile)
-    config = DiscoveryConfig(name=file.stem, yaml=yaml_content, config_type=cfg_type)
-    validated = client.validate_discovery_config(config)
+    config = DiscoveryConfig(name=file.stem, yaml=yaml_content, config_type=config_type)
+    try:
+        validated = client.validate_discovery_config(config)
+    except DataMasqueArgumentError:
+        abort(f"{file} contains no YAML content.", code=ErrorCode.INVALID_INPUT)
 
-    if validated.is_valid is ValidationStatus.invalid:
-        abort(
-            f'Discovery config "{file.name}" is invalid: {validated.validation_error}',
-            code=ErrorCode.INVALID_INPUT,
-        )
+    errors = validated.validation_error_details
+    if not errors and validated.validation_error:
+        errors = [ValidationErrorDetails(message=validated.validation_error)]
+    abort_if_invalid(f'Discovery config "{file.name}"', validated.is_valid, errors)
 
     status = validated.is_valid.value if validated.is_valid else "unknown"
     print_success(f'Discovery config "{file.name}" validation status: {status}')
+
+
+@app.command("status")
+def config_status(
+    name: str = typer.Argument(help="Discovery config name"),
+    config_type: DiscoveryConfigType | None = typer.Option(
+        None, "--type", "-t", help="Required when two configs share a name"
+    ),
+    profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
+    is_json: bool = typer.Option(False, "--json", help="Output as JSON"),
+) -> None:
+    """Show a discovery config's validation status."""
+    client = get_client(profile)
+    match = _collapse_to_one_or_abort(_find_by_name(client, name, config_type), name)
+
+    status = match.is_valid.value if match.is_valid else "unknown"
+    data: dict[str, object] = {
+        "name": match.name,
+        "type": match.config_type.value,
+        "status": status,
+        "validation_error": match.validation_error,
+    }
+    render_output(data, is_json=is_json, title=f"Discovery Config: {match.name}")
+
+    if match.is_valid is ValidationStatus.in_progress:
+        print_info("Still validating — run this command again shortly.")
+    if match.is_valid is ValidationStatus.invalid:
+        raise SystemExit(ExitCode.INVALID_INPUT)

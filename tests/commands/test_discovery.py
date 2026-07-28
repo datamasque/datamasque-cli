@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+from datamasque.client.exceptions import DataMasqueApiError
 from datamasque.client.models.discovery import (
     FileDiscoveryFile,
     FileDiscoveryLocatorResult,
@@ -175,6 +176,35 @@ def test_schema_starts_discovery_run_and_points_at_results(mock_get_client: Magi
     (request,) = call.args
     assert request.connection == "abc-123"
     assert "dm discover schema-results 99" in result.stderr
+
+
+@patch(f"{MODULE}.get_client")
+def test_schema_emits_run_id_as_json(mock_get_client: MagicMock, runner: CliRunner) -> None:
+    client = MagicMock()
+    mock_get_client.return_value = client
+    client.list_connections.return_value = [SimpleNamespace(id="abc-123", name="my_db", mask_type="database")]
+    client.start_schema_discovery_run.return_value = 99
+
+    result = runner.invoke(app, ["discover", "schema", "my_db", "--json"])
+
+    assert result.exit_code == 0
+    assert json.loads(result.stdout) == {"id": 99, "status": "queued"}
+
+
+@patch(f"{MODULE}.get_client")
+def test_file_start_failure_reports_server_detail(mock_get_client: MagicMock, runner: CliRunner) -> None:
+    client = MagicMock()
+    mock_get_client.return_value = client
+    client.list_connections.return_value = [SimpleNamespace(id="fs-1", name="my_files", mask_type="file")]
+    response = MagicMock(status_code=400)
+    response.json.return_value = {"detail": "Simultaneous runs on the same connection are not allowed."}
+    client.start_file_data_discovery_run.side_effect = DataMasqueApiError("boom", response=response)
+
+    result = runner.invoke(app, ["discover", "file", "my_files"])
+
+    assert result.exit_code == ExitCode.ERROR
+    assert "Simultaneous runs on the same connection are not allowed." in " ".join(result.stderr.split())
+    assert "Traceback" not in result.stderr
 
 
 @patch(f"{MODULE}.get_client")
@@ -367,6 +397,19 @@ def test_file_with_config_runs_from_saved_config(mock_get_client: MagicMock, run
     (call,) = client.start_file_data_discovery_run_from_config.call_args_list
     (request,) = call.args
     assert request.discovery_config == "cfg-3"
+
+
+@patch(f"{MODULE}.get_client")
+def test_file_emits_run_id_as_json(mock_get_client: MagicMock, runner: CliRunner) -> None:
+    client = MagicMock()
+    mock_get_client.return_value = client
+    client.list_connections.return_value = [SimpleNamespace(id="fs-1", name="my_files", mask_type="file")]
+    client.start_file_data_discovery_run.return_value = 88
+
+    result = runner.invoke(app, ["discover", "file", "my_files", "--json"])
+
+    assert result.exit_code == 0
+    assert json.loads(result.stdout) == {"id": 88, "status": "queued"}
 
 
 @patch(f"{MODULE}.get_client")

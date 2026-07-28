@@ -33,6 +33,15 @@ def _config(
 
 
 @patch(f"{MODULE}.get_client")
+def test_unknown_type_is_rejected_before_any_request(mock_get_client: MagicMock, runner: CliRunner) -> None:
+    result = runner.invoke(app, ["discover", "configs", "list", "--type", "banana"])
+
+    assert result.exit_code == ExitCode.USAGE
+    assert "is not one of" in result.output
+    mock_get_client.assert_not_called()
+
+
+@patch(f"{MODULE}.get_client")
 def test_list_filters_by_type(mock_get_client: MagicMock, runner: CliRunner) -> None:
     client = MagicMock()
     mock_get_client.return_value = client
@@ -170,7 +179,7 @@ def test_validate_reports_valid(mock_get_client: MagicMock, runner: CliRunner, t
     client = MagicMock()
     mock_get_client.return_value = client
     client.validate_discovery_config.return_value = SimpleNamespace(
-        is_valid=ValidationStatus.valid, validation_error=None
+        is_valid=ValidationStatus.valid, validation_error=None, validation_error_details=[]
     )
     cfg = tmp_path / "cfg.yaml"
     cfg.write_text("labels: []\n")
@@ -187,7 +196,7 @@ def test_validate_invalid_exits_4(mock_get_client: MagicMock, runner: CliRunner,
     client = MagicMock()
     mock_get_client.return_value = client
     client.validate_discovery_config.return_value = SimpleNamespace(
-        is_valid=ValidationStatus.invalid, validation_error="unknown label 'foo'"
+        is_valid=ValidationStatus.invalid, validation_error="unknown label 'foo'", validation_error_details=[]
     )
     cfg = tmp_path / "cfg.yaml"
     cfg.write_text("labels: []\n")
@@ -196,3 +205,54 @@ def test_validate_invalid_exits_4(mock_get_client: MagicMock, runner: CliRunner,
 
     assert result.exit_code == ExitCode.INVALID_INPUT
     assert "unknown label 'foo'" in result.stderr
+
+
+@patch(f"{MODULE}.get_client")
+def test_validate_oversize_aborts_before_any_request(mock_get_client: MagicMock, runner: CliRunner, tmp_path) -> None:
+    cfg = tmp_path / "big.yaml"
+    cfg.write_text("# padding\n" * 7000)
+
+    result = runner.invoke(app, ["discover", "configs", "validate", "-f", str(cfg), "--type", "database"])
+
+    assert result.exit_code == ExitCode.INVALID_INPUT
+    assert "asynchronously" in result.stderr
+    assert "dm discover configs status" in result.stderr
+    mock_get_client.assert_not_called()
+
+
+@patch(f"{MODULE}.get_client")
+def test_status_valid_exits_0(mock_get_client: MagicMock, runner: CliRunner) -> None:
+    client = MagicMock()
+    mock_get_client.return_value = client
+    client.list_discovery_configs.return_value = [_config("emp")]
+
+    result = runner.invoke(app, ["discover", "configs", "status", "emp", "--json"])
+
+    assert result.exit_code == 0
+    assert '"status": "valid"' in result.stdout
+
+
+@patch(f"{MODULE}.get_client")
+def test_status_invalid_exits_4(mock_get_client: MagicMock, runner: CliRunner) -> None:
+    client = MagicMock()
+    mock_get_client.return_value = client
+    config = _config("emp", is_valid=ValidationStatus.invalid)
+    config.validation_error = "unknown label 'foo'"
+    client.list_discovery_configs.return_value = [config]
+
+    result = runner.invoke(app, ["discover", "configs", "status", "emp", "--json"])
+
+    assert result.exit_code == ExitCode.INVALID_INPUT
+    assert "unknown label 'foo'" in result.stdout
+
+
+@patch(f"{MODULE}.get_client")
+def test_status_in_progress_exits_0(mock_get_client: MagicMock, runner: CliRunner) -> None:
+    client = MagicMock()
+    mock_get_client.return_value = client
+    client.list_discovery_configs.return_value = [_config("emp", is_valid=ValidationStatus.in_progress)]
+
+    result = runner.invoke(app, ["discover", "configs", "status", "emp", "--json"])
+
+    assert result.exit_code == 0
+    assert '"status": "in_progress"' in result.stdout

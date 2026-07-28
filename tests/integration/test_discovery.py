@@ -174,8 +174,6 @@ def test_library_create_get_delete_lifecycle(
             "create",
             "--name",
             discovery_library_name,
-            "--type",
-            "database",
             "-f",
             str(discovery_library_yaml),
         ],
@@ -208,8 +206,6 @@ def test_library_namespace_is_isolated(
             "create",
             "--name",
             discovery_library_name,
-            "--type",
-            "database",
             "--namespace",
             DISCOVERY_TEST_NAMESPACE,
             "-f",
@@ -228,9 +224,7 @@ def test_library_namespace_is_isolated(
 
 
 def test_library_validate_rejects_invalid_yaml(runner: CliRunner, invalid_discovery_yaml: Path) -> None:
-    result = runner.invoke(
-        app, ["discover", "libraries", "validate", "-f", str(invalid_discovery_yaml), "--type", "database"]
-    )
+    result = runner.invoke(app, ["discover", "libraries", "validate", "-f", str(invalid_discovery_yaml)])
     assert result.exit_code == ExitCode.INVALID_INPUT
 
 

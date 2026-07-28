@@ -1,15 +1,45 @@
 from __future__ import annotations
 
+from http import HTTPStatus
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from datamasque.client.models.status import ValidationStatus
+from datamasque.client.exceptions import DataMasqueApiError
+from datamasque.client.models.status import ValidationErrorDetails, ValidationStatus
 from typer.testing import CliRunner
 
 from datamasque_cli.main import app
 from datamasque_cli.output import ExitCode
 
 MODULE = "datamasque_cli.commands.ruleset_libraries"
+
+
+@patch(f"{MODULE}.get_client")
+def test_delete_in_use_reports_server_reason(mock_get_client: MagicMock, runner: CliRunner) -> None:
+    """A 409 must surface the server's explanation, not a traceback.
+
+    The server refuses to delete a library that active rulesets still import, and
+    its `detail` names the count. Without handling, the raised `DataMasqueApiError`
+    escapes as an unhandled exception and the user only sees a stack trace.
+    """
+    client = MagicMock()
+    mock_get_client.return_value = client
+    client.get_ruleset_library_by_name.return_value = SimpleNamespace(id="lib-uuid", name="lib", namespace="")
+    response = MagicMock()
+    response.status_code = HTTPStatus.CONFLICT
+    response.json.return_value = {
+        "detail": 'Cannot delete library "lib": used by 3 active ruleset(s)',
+        "rulesets": [{"id": "rs-1", "name": "customers"}],
+    }
+    client.delete_ruleset_library_by_name_if_exists.side_effect = DataMasqueApiError(
+        "API request to https://dm/api/ruleset-libraries/lib-uuid/ failed with status 409", response=response
+    )
+
+    result = runner.invoke(app, ["libraries", "delete", "lib", "--yes"])
+
+    assert result.exit_code == ExitCode.CONFLICT
+    assert "used by 3 active ruleset(s)" in result.stderr
+    assert "--force" in result.stderr
 
 
 def _validated_library(
@@ -101,3 +131,34 @@ def test_validate_library_nonterminal_status_passes_through(mock_get_client: Mag
 
     assert result.exit_code == 0
     assert "in_progress" in result.stderr
+
+
+@patch(f"{MODULE}.get_client")
+def test_status_valid_exits_0(mock_get_client: MagicMock, runner: CliRunner) -> None:
+    client = MagicMock()
+    mock_get_client.return_value = client
+    client.get_ruleset_library_by_name.return_value = SimpleNamespace(
+        namespace="", name="lib", is_valid=ValidationStatus.valid, validation_errors=[]
+    )
+
+    result = runner.invoke(app, ["libraries", "status", "lib", "--json"])
+
+    assert result.exit_code == 0
+    assert '"status": "valid"' in result.stdout
+
+
+@patch(f"{MODULE}.get_client")
+def test_status_invalid_exits_4(mock_get_client: MagicMock, runner: CliRunner) -> None:
+    client = MagicMock()
+    mock_get_client.return_value = client
+    client.get_ruleset_library_by_name.return_value = SimpleNamespace(
+        namespace="",
+        name="lib",
+        is_valid=ValidationStatus.invalid,
+        validation_errors=[ValidationErrorDetails(message="Unknown mask `nope`.")],
+    )
+
+    result = runner.invoke(app, ["libraries", "status", "lib", "--json"])
+
+    assert result.exit_code == ExitCode.INVALID_INPUT
+    assert "Unknown mask `nope`." in result.stdout

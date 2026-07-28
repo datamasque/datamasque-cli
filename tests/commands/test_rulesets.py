@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from datamasque.client.exceptions import DataMasqueApiError
 from datamasque.client.models.ruleset import RulesetType
-from datamasque.client.models.status import ValidationStatus
+from datamasque.client.models.status import ValidationErrorDetails, ValidationStatus
 from typer.testing import CliRunner
 
 from datamasque_cli.main import app
@@ -33,6 +33,15 @@ def _create_returning(
         return rs
 
     return fake_create
+
+
+@patch(f"{MODULE}.get_client")
+def test_unknown_type_is_rejected_before_any_request(mock_get_client: MagicMock, runner: CliRunner) -> None:
+    result = runner.invoke(app, ["rulesets", "list", "--type", "banana"])
+
+    assert result.exit_code == ExitCode.USAGE
+    assert "is not one of" in result.output
+    mock_get_client.assert_not_called()
 
 
 # -- create (type resolution via server lookup) ----------------------------
@@ -437,3 +446,64 @@ def test_system_export_alias_warns_and_delegates(mock_get_client: MagicMock, run
     assert result.exit_code == 0
     assert "deprecated" in result.stderr.lower()
     assert output.read_bytes() == b"zip-body"
+
+
+@patch(f"{MODULE}.get_client")
+def test_validate_oversize_aborts_before_any_request(
+    mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path
+) -> None:
+    yaml_file = tmp_path / "big.yaml"
+    yaml_file.write_text("# padding\n" * 7000)
+
+    result = runner.invoke(app, ["rulesets", "validate", "--file", str(yaml_file), "--type", "database"])
+
+    assert result.exit_code == ExitCode.INVALID_INPUT
+    assert "asynchronously" in result.stderr
+    assert "dm rulesets status" in result.stderr
+    mock_get_client.assert_not_called()
+
+
+# -- status ----------------------------------------------------------------
+
+
+def _listed_ruleset(is_valid: ValidationStatus, errors: list[ValidationErrorDetails] | None = None) -> SimpleNamespace:
+    return SimpleNamespace(
+        id=1, name="demo", ruleset_type=RulesetType.database, is_valid=is_valid, validation_errors=errors or []
+    )
+
+
+@patch(f"{MODULE}.get_client")
+def test_status_valid_exits_0(mock_get_client: MagicMock, runner: CliRunner) -> None:
+    client = MagicMock()
+    mock_get_client.return_value = client
+    client.list_rulesets.return_value = [_listed_ruleset(ValidationStatus.valid)]
+
+    result = runner.invoke(app, ["rulesets", "status", "demo", "--json"])
+
+    assert result.exit_code == 0
+    assert '"status": "valid"' in result.stdout
+
+
+@patch(f"{MODULE}.get_client")
+def test_status_invalid_exits_4_with_errors(mock_get_client: MagicMock, runner: CliRunner) -> None:
+    client = MagicMock()
+    mock_get_client.return_value = client
+    errors = [ValidationErrorDetails(message="Missing `key` in `tasks`.", line_number=3)]
+    client.list_rulesets.return_value = [_listed_ruleset(ValidationStatus.invalid, errors)]
+
+    result = runner.invoke(app, ["rulesets", "status", "demo", "--json"])
+
+    assert result.exit_code == ExitCode.INVALID_INPUT
+    assert "Missing `key` in `tasks`." in result.stdout
+
+
+@patch(f"{MODULE}.get_client")
+def test_status_in_progress_exits_0(mock_get_client: MagicMock, runner: CliRunner) -> None:
+    client = MagicMock()
+    mock_get_client.return_value = client
+    client.list_rulesets.return_value = [_listed_ruleset(ValidationStatus.in_progress)]
+
+    result = runner.invoke(app, ["rulesets", "status", "demo", "--json"])
+
+    assert result.exit_code == 0
+    assert '"status": "in_progress"' in result.stdout
