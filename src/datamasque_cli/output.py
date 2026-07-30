@@ -16,6 +16,7 @@ import os
 import sys
 from enum import IntEnum, StrEnum
 from http import HTTPStatus
+from pathlib import Path
 from typing import Any, NoReturn
 
 import typer
@@ -285,6 +286,13 @@ def abort_if_invalid(subject: str, is_valid: ValidationStatus | None, errors: li
         location = f" (line {error.line_number})" if error.line_number is not None else ""
         print_error(f"{error.message}{location}")
     abort(f"{subject} is invalid.", code=ErrorCode.INVALID_INPUT)
+
+
+def abort_if_empty(yaml_content: str, file: Path) -> None:
+    """Abort when `file` holds no YAML for the server to act on."""
+    if yaml_content:
+        return
+    abort(f"{file} contains no YAML content.", code=ErrorCode.INVALID_INPUT)
 
 
 def abort_if_async_validation(yaml_content: str, *, subject: str, create_command: str, status_command: str) -> None:

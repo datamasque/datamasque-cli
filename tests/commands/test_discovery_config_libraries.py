@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from http import HTTPStatus
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from datamasque.client.exceptions import DataMasqueApiError
+from datamasque.client.models.discovery_config_library import DiscoveryConfigLibrary, DiscoveryConfigLibraryId
 from datamasque.client.models.status import ValidationStatus
 from typer.testing import CliRunner
 
@@ -33,6 +36,20 @@ def _library(
         modified=None,
         yaml=yaml,
     )
+
+
+def _create_returning(
+    is_valid: ValidationStatus | None,
+    validation_error: str | None = None,
+) -> Callable[[DiscoveryConfigLibrary], DiscoveryConfigLibrary]:
+
+    def fake_create(library: DiscoveryConfigLibrary) -> DiscoveryConfigLibrary:
+        library.id = DiscoveryConfigLibraryId("lib-uuid")
+        library.is_valid = is_valid
+        library.validation_error = validation_error
+        return library
+
+    return fake_create
 
 
 @patch(f"{MODULE}.get_client")
@@ -77,7 +94,7 @@ def test_get_namespace_scopes_lookup(mock_get_client: MagicMock, runner: CliRunn
 
 
 @patch(f"{MODULE}.get_client")
-def test_create_posts_library(mock_get_client: MagicMock, runner: CliRunner, tmp_path) -> None:
+def test_create_posts_library(mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path) -> None:
     client = MagicMock()
     mock_get_client.return_value = client
     lib = tmp_path / "lib.yaml"
@@ -168,11 +185,42 @@ def test_delete_missing_is_not_found(mock_get_client: MagicMock, runner: CliRunn
 
 
 @patch(f"{MODULE}.get_client")
-def test_validate_invalid_exits_4(mock_get_client: MagicMock, runner: CliRunner, tmp_path) -> None:
+def test_validate_empty_file_aborts_before_any_request(
+    mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path
+) -> None:
+    lib = tmp_path / "empty.yaml"
+    lib.write_text("")
+
+    result = runner.invoke(app, ["discover", "libraries", "validate", "-f", str(lib)])
+
+    assert result.exit_code == ExitCode.INVALID_INPUT
+    mock_get_client.assert_not_called()
+
+
+@patch(f"{MODULE}.get_client")
+def test_validate_reports_valid(mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path) -> None:
     client = MagicMock()
     mock_get_client.return_value = client
-    client.validate_discovery_config_library.return_value = SimpleNamespace(
-        is_valid=ValidationStatus.invalid, validation_error="duplicate label 'email'"
+    client.create_discovery_config_library.side_effect = _create_returning(ValidationStatus.valid)
+    lib = tmp_path / "lib.yaml"
+    lib.write_text("labels: []\n")
+
+    result = runner.invoke(app, ["discover", "libraries", "validate", "-f", str(lib)])
+
+    assert result.exit_code == 0
+    assert "valid" in result.stderr
+    created = client.create_discovery_config_library.call_args.args[0]
+    assert created.name.startswith("__dm_cli_validate_")
+    assert created.yaml == "labels: []\n"
+    client.delete_discovery_config_library_by_id_if_exists.assert_called_once_with("lib-uuid")
+
+
+@patch(f"{MODULE}.get_client")
+def test_validate_invalid_exits_4(mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path) -> None:
+    client = MagicMock()
+    mock_get_client.return_value = client
+    client.create_discovery_config_library.side_effect = _create_returning(
+        ValidationStatus.invalid, validation_error="duplicate label 'email'"
     )
     lib = tmp_path / "lib.yaml"
     lib.write_text("labels: []\n")
@@ -181,6 +229,26 @@ def test_validate_invalid_exits_4(mock_get_client: MagicMock, runner: CliRunner,
 
     assert result.exit_code == ExitCode.INVALID_INPUT
     assert "duplicate label 'email'" in result.stderr
+    client.delete_discovery_config_library_by_id_if_exists.assert_called_once_with("lib-uuid")
+
+
+@patch(f"{MODULE}.get_client")
+def test_validate_warns_when_temp_library_cleanup_fails(
+    mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path
+) -> None:
+    client = MagicMock()
+    mock_get_client.return_value = client
+    client.create_discovery_config_library.side_effect = _create_returning(ValidationStatus.valid)
+    client.delete_discovery_config_library_by_id_if_exists.side_effect = DataMasqueApiError(
+        "boom", response=MagicMock()
+    )
+    lib = tmp_path / "lib.yaml"
+    lib.write_text("labels: []\n")
+
+    result = runner.invoke(app, ["discover", "libraries", "validate", "-f", str(lib)])
+
+    assert result.exit_code == 0
+    assert "left on server" in result.stderr
 
 
 @patch(f"{MODULE}.get_client")

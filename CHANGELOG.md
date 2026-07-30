@@ -3,7 +3,7 @@
 ## v1.5.0
 
 ### Added
-- Support for datamasque-python 1.2.1.
+- Support for datamasque-python 1.2.2.
   - `dm discover schema-results` handles matches with no label.
   - `dm rulesets validate` and `dm libraries validate` print validation
     errors for invalid YAML.

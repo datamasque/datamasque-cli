@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
 from datamasque.client.exceptions import DataMasqueApiError
 from datamasque.client.models.discovery import (
     FileDiscoveryFile,
@@ -155,6 +156,57 @@ def test_file_report_table_lists_locators(mock_get_client: MagicMock, runner: Cl
     assert "phone" in result.stdout
     assert "data.csv" in result.stdout
     assert "safe_data_preview" not in result.stdout
+
+
+# -- missing run output ----------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("command", "client_method", "status", "expected"),
+    [
+        (["discover", "sdd-report", "42"], "get_sdd_report", 404, "sensitive data discovery report"),
+        (["discover", "db-report", "42"], "get_db_discovery_result_report", 404, "database discovery report"),
+        (
+            ["discover", "config-snapshot", "42"],
+            "get_discovery_run_config_snapshot_yaml",
+            404,
+            "discovery config snapshot",
+        ),
+        (["discover", "schema-results", "42"], "list_schema_discovery_results", 400, "schema discovery results"),
+    ],
+)
+@patch(f"{MODULE}.get_client")
+def test_missing_run_output_aborts_not_found(
+    mock_get_client: MagicMock,
+    runner: CliRunner,
+    command: list[str],
+    client_method: str,
+    status: int,
+    expected: str,
+) -> None:
+    client = MagicMock()
+    mock_get_client.return_value = client
+    getattr(client, client_method).side_effect = DataMasqueApiError(
+        f"{status}", response=SimpleNamespace(status_code=status)
+    )
+
+    result = runner.invoke(app, command)
+
+    assert result.exit_code == ExitCode.NOT_FOUND
+    stderr = " ".join(result.stderr.split())
+    assert f"No {expected} available for run 42" in stderr
+    assert "dm run status 42" in stderr
+
+
+@patch(f"{MODULE}.get_client")
+def test_unexpected_api_error_is_not_swallowed(mock_get_client: MagicMock, runner: CliRunner) -> None:
+    client = MagicMock()
+    mock_get_client.return_value = client
+    client.get_sdd_report.side_effect = DataMasqueApiError("500", response=SimpleNamespace(status_code=500))
+
+    result = runner.invoke(app, ["discover", "sdd-report", "42"])
+
+    assert result.exit_code != ExitCode.NOT_FOUND
 
 
 # -- schema discovery trigger ---------------------------------------------

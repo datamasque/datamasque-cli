@@ -2,15 +2,25 @@
 
 from __future__ import annotations
 
+import uuid
 from pathlib import Path
 
 import typer
-from datamasque.client.exceptions import DataMasqueApiError, DataMasqueArgumentError
+from datamasque.client.exceptions import DataMasqueApiError
 from datamasque.client.models.discovery_config_library import DiscoveryConfigLibrary
 from datamasque.client.models.status import ValidationStatus
 
 from datamasque_cli.client import get_client
-from datamasque_cli.output import ErrorCode, ExitCode, abort, abort_api_error, print_success, render_output
+from datamasque_cli.output import (
+    ErrorCode,
+    ExitCode,
+    abort,
+    abort_api_error,
+    abort_if_empty,
+    print_success,
+    print_warning,
+    render_output,
+)
 
 app = typer.Typer(help="Manage discovery config libraries (configurable discovery).", no_args_is_help=True)
 
@@ -87,12 +97,12 @@ def create_library(
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Create or update a discovery config library from a YAML file."""
+    yaml_content = file.read_text()
+    abort_if_empty(yaml_content, file)
+
     client = get_client(profile)
-    library = DiscoveryConfigLibrary(name=name, namespace=namespace, yaml=file.read_text())
-    try:
-        client.create_or_update_discovery_config_library(library)
-    except DataMasqueArgumentError:
-        abort(f"{file} contains no YAML content.", code=ErrorCode.INVALID_INPUT)
+    library = DiscoveryConfigLibrary(name=name, namespace=namespace, yaml=yaml_content)
+    client.create_or_update_discovery_config_library(library)
     print_success(f"Discovery config library '{_label(name, namespace)}' created/updated.")
 
 
@@ -135,22 +145,38 @@ def validate_library(
     file: Path = typer.Option(..., "--file", "-f", help="Path to YAML library file", exists=True, readable=True),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
-    """Validate a discovery config library YAML file against the DataMasque server."""
+    """Validate a discovery config library YAML file against the DataMasque server.
+
+    Creates a temporary library to trigger server-side validation,
+    then deletes it. Reports any validation errors.
+    """
+    yaml_content = file.read_text()
+    abort_if_empty(yaml_content, file)
+    temp_name = f"__dm_cli_validate_{uuid.uuid4().hex}"
+
     client = get_client(profile)
-    library = DiscoveryConfigLibrary(name=file.stem, yaml=file.read_text())
+    library = DiscoveryConfigLibrary(name=temp_name, yaml=yaml_content)
+
     try:
-        validated = client.validate_discovery_config_library(library)
-    except DataMasqueArgumentError:
-        abort(f"{file} contains no YAML content.", code=ErrorCode.INVALID_INPUT)
+        created = client.create_discovery_config_library(library)
+    except DataMasqueApiError as exc:
+        abort_api_error(f'Validation of discovery config library "{file.name}" failed', exc)
 
-    if validated.is_valid is ValidationStatus.invalid:
-        abort(
-            f'Discovery config library "{file.name}" is invalid: {validated.validation_error}',
-            code=ErrorCode.INVALID_INPUT,
-        )
+    try:
+        if created.is_valid is ValidationStatus.invalid:
+            abort(
+                f'Discovery config library "{file.name}" is invalid: {created.validation_error}',
+                code=ErrorCode.INVALID_INPUT,
+            )
 
-    status = validated.is_valid.value if validated.is_valid else "unknown"
-    print_success(f'Discovery config library "{file.name}" validation status: {status}')
+        status = created.is_valid.value if created.is_valid else "unknown"
+        print_success(f'Discovery config library "{file.name}" validation status: {status}')
+    finally:
+        if created.id is not None:
+            try:
+                client.delete_discovery_config_library_by_id_if_exists(created.id)
+            except DataMasqueApiError as exc:
+                print_warning(f"Validation library '{temp_name}' left on server; delete manually. Reason: {exc}")
 
 
 @app.command("status")

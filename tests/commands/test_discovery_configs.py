@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+from http import HTTPStatus
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from datamasque.client.models.discovery_config import DiscoveryConfigType
+from datamasque.client.exceptions import DataMasqueApiError
+from datamasque.client.models.discovery_config import DiscoveryConfig, DiscoveryConfigId, DiscoveryConfigType
 from datamasque.client.models.status import ValidationStatus
 from typer.testing import CliRunner
 
@@ -30,6 +34,21 @@ def _config(
         modified=None,
         yaml=yaml,
     )
+
+
+def _create_returning(
+    is_valid: ValidationStatus | None,
+    validation_error: str | None = None,
+) -> Callable[[DiscoveryConfig], DiscoveryConfig]:
+
+    def fake_create(config: DiscoveryConfig) -> DiscoveryConfig:
+        config.id = DiscoveryConfigId("cfg-uuid")
+        config.is_valid = is_valid
+        config.validation_error = validation_error
+        config.validation_error_details = []
+        return config
+
+    return fake_create
 
 
 @patch(f"{MODULE}.get_client")
@@ -118,7 +137,7 @@ def test_defaults_requests_typed_default(mock_get_client: MagicMock, runner: Cli
 
 
 @patch(f"{MODULE}.get_client")
-def test_create_new_requires_type(mock_get_client: MagicMock, runner: CliRunner, tmp_path) -> None:
+def test_create_new_requires_type(mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path) -> None:
     client = MagicMock()
     mock_get_client.return_value = client
     client.list_discovery_configs.return_value = []
@@ -137,7 +156,7 @@ def test_create_new_requires_type(mock_get_client: MagicMock, runner: CliRunner,
 
 
 @patch(f"{MODULE}.get_client")
-def test_create_update_defaults_to_existing_type(mock_get_client: MagicMock, runner: CliRunner, tmp_path) -> None:
+def test_create_update_defaults_to_existing_type(mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path) -> None:
     client = MagicMock()
     mock_get_client.return_value = client
     client.list_discovery_configs.return_value = [_config("emp", DiscoveryConfigType.database)]
@@ -175,12 +194,10 @@ def test_delete_aborts_when_missing(mock_get_client: MagicMock, runner: CliRunne
 
 
 @patch(f"{MODULE}.get_client")
-def test_validate_reports_valid(mock_get_client: MagicMock, runner: CliRunner, tmp_path) -> None:
+def test_validate_reports_valid(mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path) -> None:
     client = MagicMock()
     mock_get_client.return_value = client
-    client.validate_discovery_config.return_value = SimpleNamespace(
-        is_valid=ValidationStatus.valid, validation_error=None, validation_error_details=[]
-    )
+    client.create_discovery_config.side_effect = _create_returning(ValidationStatus.valid)
     cfg = tmp_path / "cfg.yaml"
     cfg.write_text("labels: []\n")
 
@@ -188,15 +205,19 @@ def test_validate_reports_valid(mock_get_client: MagicMock, runner: CliRunner, t
 
     assert result.exit_code == 0
     assert "valid" in result.stderr
-    client.validate_discovery_config.assert_called_once()
+    created = client.create_discovery_config.call_args.args[0]
+    assert created.name.startswith("__dm_cli_validate_")
+    assert created.yaml == "labels: []\n"
+    assert created.config_type is DiscoveryConfigType.database
+    client.delete_discovery_config_by_id_if_exists.assert_called_once_with("cfg-uuid")
 
 
 @patch(f"{MODULE}.get_client")
-def test_validate_invalid_exits_4(mock_get_client: MagicMock, runner: CliRunner, tmp_path) -> None:
+def test_validate_invalid_exits_4(mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path) -> None:
     client = MagicMock()
     mock_get_client.return_value = client
-    client.validate_discovery_config.return_value = SimpleNamespace(
-        is_valid=ValidationStatus.invalid, validation_error="unknown label 'foo'", validation_error_details=[]
+    client.create_discovery_config.side_effect = _create_returning(
+        ValidationStatus.invalid, validation_error="unknown label 'foo'"
     )
     cfg = tmp_path / "cfg.yaml"
     cfg.write_text("labels: []\n")
@@ -205,10 +226,65 @@ def test_validate_invalid_exits_4(mock_get_client: MagicMock, runner: CliRunner,
 
     assert result.exit_code == ExitCode.INVALID_INPUT
     assert "unknown label 'foo'" in result.stderr
+    client.delete_discovery_config_by_id_if_exists.assert_called_once_with("cfg-uuid")
 
 
 @patch(f"{MODULE}.get_client")
-def test_validate_oversize_aborts_before_any_request(mock_get_client: MagicMock, runner: CliRunner, tmp_path) -> None:
+def test_validate_rejected_create_aborts_without_delete(
+    mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path
+) -> None:
+    client = MagicMock()
+    mock_get_client.return_value = client
+    response = MagicMock()
+    response.status_code = HTTPStatus.BAD_REQUEST
+    response.json.return_value = {"detail": "config_yaml: invalid"}
+    client.create_discovery_config.side_effect = DataMasqueApiError(
+        "API request failed with status 400", response=response
+    )
+    cfg = tmp_path / "cfg.yaml"
+    cfg.write_text("labels: []\n")
+
+    result = runner.invoke(app, ["discover", "configs", "validate", "-f", str(cfg), "--type", "database"])
+
+    assert result.exit_code == ExitCode.ERROR
+    assert "config_yaml: invalid" in result.stderr
+    client.delete_discovery_config_by_id_if_exists.assert_not_called()
+
+
+@patch(f"{MODULE}.get_client")
+def test_validate_warns_when_temp_config_cleanup_fails(
+    mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path
+) -> None:
+    client = MagicMock()
+    mock_get_client.return_value = client
+    client.create_discovery_config.side_effect = _create_returning(ValidationStatus.valid)
+    client.delete_discovery_config_by_id_if_exists.side_effect = DataMasqueApiError("boom", response=MagicMock())
+    cfg = tmp_path / "cfg.yaml"
+    cfg.write_text("labels: []\n")
+
+    result = runner.invoke(app, ["discover", "configs", "validate", "-f", str(cfg), "--type", "database"])
+
+    assert result.exit_code == 0
+    assert "left on server" in result.stderr
+
+
+@patch(f"{MODULE}.get_client")
+def test_validate_empty_file_aborts_before_any_request(
+    mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path
+) -> None:
+    cfg = tmp_path / "empty.yaml"
+    cfg.write_text("")
+
+    result = runner.invoke(app, ["discover", "configs", "validate", "-f", str(cfg), "--type", "database"])
+
+    assert result.exit_code == ExitCode.INVALID_INPUT
+    mock_get_client.assert_not_called()
+
+
+@patch(f"{MODULE}.get_client")
+def test_validate_oversize_aborts_before_any_request(
+    mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path
+) -> None:
     cfg = tmp_path / "big.yaml"
     cfg.write_text("# padding\n" * 7000)
 

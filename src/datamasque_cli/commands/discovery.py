@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from http import HTTPStatus
 from pathlib import Path
 
 import typer
@@ -32,6 +33,25 @@ from datamasque_cli.output import (
 app = typer.Typer(help="Data discovery operations.", no_args_is_help=True)
 app.add_typer(discovery_configs.app, name="configs")
 app.add_typer(discovery_config_libraries.app, name="libraries")
+
+
+def _abort_if_run_output_missing(
+    exc: DataMasqueApiError,
+    run_id: int,
+    output_label: str,
+    missing_statuses: tuple[HTTPStatus, ...] = (HTTPStatus.NOT_FOUND,),
+) -> None:
+    """Turn the error a run without `output_label` returns into a not-found envelope."""
+    if exc.response is None or exc.response.status_code not in missing_statuses:
+        return
+    abort(
+        f"No {output_label} available for run {run_id}.",
+        code=ErrorCode.NOT_FOUND,
+        hint=(
+            f"Discovery output is written once the run reaches a final state. "
+            f"Check status with `dm run status {run_id}`."
+        ),
+    )
 
 
 def _write_or_echo(content: str, output: Path | None, success_label: str) -> None:
@@ -171,7 +191,13 @@ def schema_results(
     output reflects what discovery actually found.
     """
     client = get_client(profile)
-    results = client.list_schema_discovery_results(RunId(run_id))
+    try:
+        results = client.list_schema_discovery_results(RunId(run_id))
+    except DataMasqueApiError as exc:
+        _abort_if_run_output_missing(
+            exc, run_id, "schema discovery results", (HTTPStatus.NOT_FOUND, HTTPStatus.BAD_REQUEST)
+        )
+        raise
 
     data = [
         {
@@ -204,7 +230,11 @@ def sdd_report(
 ) -> None:
     """Download sensitive data discovery report for a run."""
     client = get_client(profile)
-    report = client.get_sdd_report(RunId(run_id))
+    try:
+        report = client.get_sdd_report(RunId(run_id))
+    except DataMasqueApiError as exc:
+        _abort_if_run_output_missing(exc, run_id, "sensitive data discovery report")
+        raise
     _write_or_echo(report, output, "SDD report")
 
 
@@ -221,7 +251,11 @@ def db_discovery_report(
     requires `-o`, since a zip can't be streamed to stdout.
     """
     client = get_client(profile)
-    report = client.get_db_discovery_result_report(RunId(run_id))
+    try:
+        report = client.get_db_discovery_result_report(RunId(run_id))
+    except DataMasqueApiError as exc:
+        _abort_if_run_output_missing(exc, run_id, "database discovery report")
+        raise
 
     if isinstance(report, bytes):
         if output is None:
@@ -286,5 +320,9 @@ def config_snapshot(
 ) -> None:
     """Download the discovery config a run used (the run's snapshot)."""
     client = get_client(profile)
-    snapshot = client.get_discovery_run_config_snapshot_yaml(RunId(run_id))
+    try:
+        snapshot = client.get_discovery_run_config_snapshot_yaml(RunId(run_id))
+    except DataMasqueApiError as exc:
+        _abort_if_run_output_missing(exc, run_id, "discovery config snapshot")
+        raise
     _write_or_echo(snapshot, output, "Discovery config snapshot")

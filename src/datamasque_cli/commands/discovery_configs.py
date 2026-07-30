@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import uuid
 from pathlib import Path
 
 import typer
 from datamasque.client import DataMasqueClient
-from datamasque.client.exceptions import DataMasqueArgumentError
+from datamasque.client.exceptions import DataMasqueApiError
 from datamasque.client.models.discovery_config import DiscoveryConfig, DiscoveryConfigType
 from datamasque.client.models.status import ValidationErrorDetails, ValidationStatus
 
@@ -15,10 +16,13 @@ from datamasque_cli.output import (
     ErrorCode,
     ExitCode,
     abort,
+    abort_api_error,
     abort_if_async_validation,
+    abort_if_empty,
     abort_if_invalid,
     print_info,
     print_success,
+    print_warning,
     render_output,
 )
 
@@ -176,11 +180,10 @@ def create_config(
         )
 
     yaml_content = file.read_text()
+    abort_if_empty(yaml_content, file)
+
     config = DiscoveryConfig(name=name, yaml=yaml_content, config_type=cfg_type)
-    try:
-        client.create_or_update_discovery_config(config)
-    except DataMasqueArgumentError:
-        abort(f"{file} contains no YAML content.", code=ErrorCode.INVALID_INPUT)
+    client.create_or_update_discovery_config(config)
     print_success(f"Discovery config '{name}' ({cfg_type.value}) created/updated.")
 
 
@@ -213,30 +216,43 @@ def validate_config(
 ) -> None:
     """Validate a discovery config YAML file against the DataMasque server.
 
+    Creates a temporary config to trigger server-side validation,
+    then deletes it. Reports any validation errors.
+
     Note that configs over 60 KB validate asynchronously and cannot be validated here.
     """
     yaml_content = file.read_text()
+    abort_if_empty(yaml_content, file)
     abort_if_async_validation(
         yaml_content,
         subject=f'Discovery config "{file.name}"',
         create_command=f"dm discover configs create --name <name> --type {config_type.value} -f {file}",
         status_command="dm discover configs status <name>",
     )
+    temp_name = f"__dm_cli_validate_{uuid.uuid4().hex}"
 
     client = get_client(profile)
-    config = DiscoveryConfig(name=file.stem, yaml=yaml_content, config_type=config_type)
+    config = DiscoveryConfig(name=temp_name, yaml=yaml_content, config_type=config_type)
+
     try:
-        validated = client.validate_discovery_config(config)
-    except DataMasqueArgumentError:
-        abort(f"{file} contains no YAML content.", code=ErrorCode.INVALID_INPUT)
+        created = client.create_discovery_config(config)
+    except DataMasqueApiError as exc:
+        abort_api_error(f'Validation of discovery config "{file.name}" failed', exc)
 
-    errors = validated.validation_error_details
-    if not errors and validated.validation_error:
-        errors = [ValidationErrorDetails(message=validated.validation_error)]
-    abort_if_invalid(f'Discovery config "{file.name}"', validated.is_valid, errors)
+    try:
+        errors = created.validation_error_details
+        if not errors and created.validation_error:
+            errors = [ValidationErrorDetails(message=created.validation_error)]
+        abort_if_invalid(f'Discovery config "{file.name}"', created.is_valid, errors)
 
-    status = validated.is_valid.value if validated.is_valid else "unknown"
-    print_success(f'Discovery config "{file.name}" validation status: {status}')
+        status = created.is_valid.value if created.is_valid else "unknown"
+        print_success(f'Discovery config "{file.name}" validation status: {status}')
+    finally:
+        if created.id is not None:
+            try:
+                client.delete_discovery_config_by_id_if_exists(created.id)
+            except DataMasqueApiError as exc:
+                print_warning(f"Validation config '{temp_name}' left on server; delete manually. Reason: {exc}")
 
 
 @app.command("status")
