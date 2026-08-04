@@ -23,7 +23,15 @@ from datamasque.client.models.ifm import (
 )
 
 from datamasque_cli.client import get_ifm_client
-from datamasque_cli.output import ErrorCode, abort, print_error, print_json, print_success, render_output
+from datamasque_cli.output import (
+    ErrorCode,
+    abort,
+    confirm_or_abort,
+    print_error,
+    print_json,
+    print_success,
+    render_output,
+)
 
 app = typer.Typer(help="Manage in-flight-masking (IFM) ruleset plans and execute masks.", no_args_is_help=True)
 
@@ -118,7 +126,7 @@ def _load_mask_input(data: str) -> list[Any]:
         raw = sys.stdin.read()
     else:
         try:
-            raw = Path(data).read_text()
+            raw = Path(data).read_text(encoding="utf-8")
         except OSError as exc:
             code = ErrorCode.NOT_FOUND if isinstance(exc, FileNotFoundError) else ErrorCode.INVALID_INPUT
             abort(f"Could not read mask input file '{data}': {exc.strerror or exc}", code=code)
@@ -217,7 +225,7 @@ def create_plan(
     client = get_ifm_client(profile)
     request = RulesetPlanCreateRequest(
         name=name,
-        ruleset_yaml=file.read_text(),
+        ruleset_yaml=file.read_text(encoding="utf-8"),
         options=_options_from_flags(enabled, log_level),
     )
     try:
@@ -249,7 +257,7 @@ def update_plan(
 
     client = get_ifm_client(profile)
     request = RulesetPlanPartialUpdateRequest(
-        ruleset_yaml=file.read_text() if file is not None else None,
+        ruleset_yaml=file.read_text(encoding="utf-8") if file is not None else None,
         options=_options_from_flags(enabled, log_level),
     )
     try:
@@ -268,7 +276,7 @@ def delete_plan(
 ) -> None:
     """Delete an IFM ruleset plan."""
     if not is_confirmed:
-        typer.confirm(f"Delete IFM ruleset plan '{name}'?", abort=True)
+        confirm_or_abort(f"Delete IFM ruleset plan '{name}'?")
 
     client = get_ifm_client(profile)
     try:

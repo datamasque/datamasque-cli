@@ -176,6 +176,7 @@ def test_abort_human_mode_prints_red_error(monkeypatch: pytest.MonkeyPatch, caps
         (ErrorCode.AUTH_FAILED, 7),
         (ErrorCode.CONFLICT, 8),
         (ErrorCode.TRANSPORT_ERROR, 9),
+        (ErrorCode.CANCELLED, 10),
     ],
 )
 def test_abort_maps_code_to_documented_exit_code(code: ErrorCode, expected_exit: int) -> None:

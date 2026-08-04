@@ -59,7 +59,7 @@ def _write_or_echo(content: str, output: Path | None, success_label: str) -> Non
     if output is None:
         typer.echo(content)
         return
-    output.write_text(content)
+    output.write_text(content, encoding="utf-8")
     print_success(f"{success_label} written to {output}")
 
 
@@ -74,29 +74,25 @@ def _resolve_connection_id(client: DataMasqueClient, name_or_id: str) -> str:
 def _resolve_discovery_config_id(
     client: DataMasqueClient, name: str, expected_type: DiscoveryConfigType
 ) -> DiscoveryConfigId:
-    """Resolve a discovery config name to its UUID, requiring it to be of `expected_type`."""
-    named = [c for c in client.list_discovery_configs() if c.name == name]
-    matches = [c for c in named if c.config_type is expected_type]
+    """Resolve a discovery config name to its UUID, requiring it to be of `expected_type`.
 
-    if not matches:
-        if named:
-            existing = ", ".join(c.config_type.value for c in named)
-            abort(
-                f"Discovery config '{name}' exists as {existing}, "
-                f"but {expected_type.value} discovery needs a {expected_type.value} config.",
-                code=ErrorCode.INVALID_INPUT,
-            )
-        abort(f"Discovery config '{name}' not found.", code=ErrorCode.NOT_FOUND)
-    if len(matches) > 1:
-        options = "\n  ".join(f"id={c.id}" for c in matches)
+    Config names are unique per type, so name plus type identifies at most one config.
+    """
+    match = client.get_discovery_config_by_name(name, expected_type)
+    if match is not None:
+        assert match.id is not None
+        return match.id
+
+    other_type = (
+        DiscoveryConfigType.file if expected_type is DiscoveryConfigType.database else DiscoveryConfigType.database
+    )
+    if client.get_discovery_config_by_name(name, other_type) is not None:
         abort(
-            f"Multiple {expected_type.value} discovery configs named '{name}':\n  {options}",
-            code=ErrorCode.AMBIGUOUS,
+            f"Discovery config '{name}' exists as {other_type.value}, "
+            f"but {expected_type.value} discovery needs a {expected_type.value} config.",
+            code=ErrorCode.INVALID_INPUT,
         )
-
-    config_id = matches[0].id
-    assert config_id is not None
-    return config_id
+    abort(f"Discovery config '{name}' not found.", code=ErrorCode.NOT_FOUND)
 
 
 @app.command("schema")
@@ -122,16 +118,16 @@ def schema_discovery(
             config_id = _resolve_discovery_config_id(client, config, DiscoveryConfigType.database)
             from_config = SchemaDiscoveryFromConfigRequest(connection=ConnectionId(conn_id), discovery_config=config_id)
             run_id = client.start_schema_discovery_run_from_config(from_config)
-            source = f"config '{config}'"
+            config_source = f"config '{config}'"
         else:
             request = SchemaDiscoveryRequest(connection=ConnectionId(conn_id))
             run_id = client.start_schema_discovery_run(request)
-            source = "default discovery"
+            config_source = "default discovery"
     except DataMasqueApiError as exc:
         abort_api_error(f"Failed to start schema discovery on '{connection}'", exc)
 
     print_success(
-        f"Schema discovery run {run_id} started for connection '{connection}' ({source}). "
+        f"Schema discovery run {run_id} started for connection '{connection}' ({config_source}). "
         f"Once finished, list results with: dm discover schema-results {run_id}"
     )
     if should_emit_json(is_json):
@@ -139,7 +135,7 @@ def schema_discovery(
 
 
 @app.command("file")
-def file_discovery(
+def start_file_discovery(
     connection: str = typer.Argument(help="Connection name or ID"),
     config: str | None = typer.Option(
         None, "--config", "-c", help="Run with a saved file discovery config (configurable discovery)"
@@ -162,16 +158,16 @@ def file_discovery(
                 connection=ConnectionId(conn_id), discovery_config=config_id
             )
             run_id = client.start_file_data_discovery_run_from_config(from_config)
-            source = f"config '{config}'"
+            config_source = f"config '{config}'"
         else:
             request = FileDataDiscoveryRequest(connection=ConnectionId(conn_id))
             run_id = client.start_file_data_discovery_run(request)
-            source = "default discovery"
+            config_source = "default discovery"
     except DataMasqueApiError as exc:
         abort_api_error(f"Failed to start file data discovery on '{connection}'", exc)
 
     print_success(
-        f"File data discovery run {run_id} started for connection '{connection}' ({source}). "
+        f"File data discovery run {run_id} started for connection '{connection}' ({config_source}). "
         f"Once finished, download the report with: dm discover file-report {run_id}"
     )
     if should_emit_json(is_json):
@@ -197,7 +193,7 @@ def schema_results(
         _abort_if_run_output_missing(
             exc, run_id, "schema discovery results", (HTTPStatus.NOT_FOUND, HTTPStatus.BAD_REQUEST)
         )
-        raise
+        abort_api_error(f"Failed to list schema discovery results for run {run_id}", exc)
 
     data = [
         {
@@ -234,7 +230,7 @@ def sdd_report(
         report = client.get_sdd_report(RunId(run_id))
     except DataMasqueApiError as exc:
         _abort_if_run_output_missing(exc, run_id, "sensitive data discovery report")
-        raise
+        abort_api_error(f"Failed to download sensitive data discovery report for run {run_id}", exc)
     _write_or_echo(report, output, "SDD report")
 
 
@@ -255,7 +251,7 @@ def db_discovery_report(
         report = client.get_db_discovery_result_report(RunId(run_id))
     except DataMasqueApiError as exc:
         _abort_if_run_output_missing(exc, run_id, "database discovery report")
-        raise
+        abort_api_error(f"Failed to download database discovery report for run {run_id}", exc)
 
     if isinstance(report, bytes):
         if output is None:
@@ -281,16 +277,20 @@ def file_discovery_report(
 ) -> None:
     """Download file discovery report for a run."""
     client = get_client(profile)
-    report = client.get_file_data_discovery_report(RunId(run_id))
-    full = [result.model_dump(mode="json") for result in report]
+    try:
+        report = client.get_file_data_discovery_report(RunId(run_id))
+    except DataMasqueApiError as exc:
+        _abort_if_run_output_missing(exc, run_id, "file discovery report")
+        abort_api_error(f"Failed to download file discovery report for run {run_id}", exc)
+    serialised_report = [result.model_dump(mode="json") for result in report]
 
     if output is not None:
-        output.write_text(json.dumps(full, indent=2, default=str))
+        output.write_text(json.dumps(serialised_report, indent=2, default=str), encoding="utf-8")
         print_success(f"File discovery report written to {output}")
         return
 
     if should_emit_json(is_json):
-        print_json(full)
+        print_json(serialised_report)
         return
 
     rows = [
@@ -313,7 +313,7 @@ def file_discovery_report(
 
 
 @app.command("config-snapshot")
-def config_snapshot(
+def download_config_snapshot(
     run_id: int = typer.Argument(help="Discovery run ID"),
     output: Path | None = typer.Option(None, "--output", "-o", help="Write YAML to this path"),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
@@ -324,5 +324,5 @@ def config_snapshot(
         snapshot = client.get_discovery_run_config_snapshot_yaml(RunId(run_id))
     except DataMasqueApiError as exc:
         _abort_if_run_output_missing(exc, run_id, "discovery config snapshot")
-        raise
+        abort_api_error(f"Failed to download discovery config snapshot for run {run_id}", exc)
     _write_or_echo(snapshot, output, "Discovery config snapshot")

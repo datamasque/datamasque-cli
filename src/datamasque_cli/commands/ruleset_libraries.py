@@ -16,6 +16,7 @@ from datamasque_cli.output import (
     abort,
     abort_api_error,
     abort_if_invalid,
+    confirm_or_abort,
     print_info,
     print_success,
     render_output,
@@ -86,7 +87,7 @@ def create_library(
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Create or update a ruleset library from a YAML file."""
-    yaml_content = file.read_text()
+    yaml_content = file.read_text(encoding="utf-8")
     client = get_client(profile)
 
     library = RulesetLibrary(name=name, namespace=namespace, yaml=yaml_content)
@@ -110,7 +111,7 @@ def delete_library(
         abort(f"Library '{label}' not found.", code=ErrorCode.NOT_FOUND)
 
     if not is_confirmed:
-        typer.confirm(f"Delete library '{label}'?", abort=True)
+        confirm_or_abort(f"Delete library '{label}'?")
 
     try:
         client.delete_ruleset_library_by_name_if_exists(name, namespace, force=force)
@@ -142,7 +143,10 @@ def validate_library(
     if lib is None:
         abort(f"Library '{label}' not found.", code=ErrorCode.NOT_FOUND)
 
-    validated = client.validate_ruleset_library(lib.id)
+    try:
+        validated = client.validate_ruleset_library(lib.id)
+    except DataMasqueApiError as exc:
+        abort_api_error(f"Failed to validate library '{label}'", exc)
     abort_if_invalid(f"Library '{label}'", validated.is_valid, validated.validation_errors)
 
     status = validated.is_valid.value if validated.is_valid else "unknown"
@@ -150,7 +154,7 @@ def validate_library(
 
 
 @app.command("status")
-def library_status(
+def show_library_status(
     name: str = typer.Argument(help="Library name"),
     namespace: str = typer.Option("", "--namespace", "-n", help="Library namespace"),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),

@@ -18,6 +18,7 @@ from datamasque_cli.client import get_client
 from datamasque_cli.output import (
     ErrorCode,
     abort,
+    abort_api_error,
     console,
     print_error,
     print_json,
@@ -358,12 +359,12 @@ def run_report(
                     f"Check status with `dm run status {run_id}`."
                 ),
             )
-        raise
+        abort_api_error(f"Failed to download report for run {run_id}", exc)
 
     if output is None:
         typer.echo(report)
     else:
-        output.write_text(report)
+        output.write_text(report, encoding="utf-8")
         print_success(f"Run report written to {output}")
 
 

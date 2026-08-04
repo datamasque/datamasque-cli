@@ -27,6 +27,7 @@ from datamasque_cli.output import (
     ErrorCode,
     abort,
     abort_api_error,
+    confirm_or_abort,
     print_success,
     redact_sensitive_fields,
     render_output,
@@ -213,7 +214,7 @@ def create_connection(
 
 def _create_from_file(client: DataMasqueClient, file: Path) -> None:
     """Create a connection from a JSON file."""
-    data = json.loads(file.read_text())
+    data = json.loads(file.read_text(encoding="utf-8"))
     conn_type = _parse_connection_type(data.pop("type", "database"))
 
     # Convert db_type string to enum for database connections.
@@ -378,7 +379,7 @@ def delete_connection(
         abort(f"Connection '{name}' not found.", code=ErrorCode.NOT_FOUND)
 
     if not is_confirmed:
-        typer.confirm(f"Delete connection '{name}'?", abort=True)
+        confirm_or_abort(f"Delete connection '{name}'?")
 
     client.delete_connection_by_name_if_exists(name)
     print_success(f"Connection '{name}' deleted.")

@@ -194,7 +194,7 @@ def test_delete_without_confirmation_aborts(mock_get_client: MagicMock, runner: 
 
     result = runner.invoke(app, ["ifm", "delete", "p1"], input="n\n")
 
-    assert result.exit_code != 0
+    assert result.exit_code == ExitCode.CANCELLED
     client.delete_ruleset_plan.assert_not_called()
 
 
@@ -252,7 +252,7 @@ def test_mask_rejects_non_list_input(mock_get_client: MagicMock, runner: CliRunn
 
     result = runner.invoke(app, ["ifm", "mask", "p1", "--data", str(data_file)])
 
-    assert result.exit_code != 0
+    assert result.exit_code == ExitCode.INVALID_INPUT
     client.mask.assert_not_called()
 
 
@@ -265,7 +265,7 @@ def test_mask_aborts_when_data_file_missing(mock_get_client: MagicMock, runner: 
 
     result = runner.invoke(app, ["ifm", "mask", "p1", "--data", str(missing)])
 
-    assert result.exit_code != 0
+    assert result.exit_code == ExitCode.NOT_FOUND
     assert "Could not read mask input file" in result.stderr
     assert "Traceback" not in result.stderr
     client.mask.assert_not_called()
@@ -574,5 +574,5 @@ def test_create_rejects_invalid_log_level(mock_get_client: MagicMock, runner: Cl
         ["ifm", "create", "--name", "smoke", "--file", str(yaml_file), "--log-level", "TRACE"],
     )
 
-    assert result.exit_code != 0
+    assert result.exit_code == ExitCode.USAGE_ERROR
     client.create_ruleset_plan.assert_not_called()

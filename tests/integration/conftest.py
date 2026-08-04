@@ -170,6 +170,25 @@ def db_yaml(tmp_path: Path) -> Path:
 DISCOVERY_TEST_NAMESPACE = "dm_int_ns"
 
 
+def create_discovery_config(runner: CliRunner, name: str, config_type: str, yaml_file: Path) -> None:
+    """Create a discovery config, and fail the test when the CLI rejects it."""
+    result = runner.invoke(
+        app,
+        ["discover", "configs", "create", "--name", name, "--type", config_type, "-f", str(yaml_file)],
+    )
+    assert result.exit_code == 0, f"could not create {config_type} config '{name}': {result.stdout}{result.stderr}"
+
+
+def create_discovery_config_library(runner: CliRunner, name: str, yaml_file: Path, namespace: str = "") -> None:
+    """Create a discovery config library, and fail the test when the CLI rejects it."""
+    result = runner.invoke(
+        app,
+        ["discover", "libraries", "create", "--name", name, "--namespace", namespace, "-f", str(yaml_file)],
+    )
+    label = f"{namespace}/{name}" if namespace else name
+    assert result.exit_code == 0, f"could not create library '{label}': {result.stdout}{result.stderr}"
+
+
 @pytest.fixture()
 def discovery_config_name(runner: CliRunner) -> Iterator[str]:
     name = f"dm_int_{uuid.uuid4().hex[:8]}"

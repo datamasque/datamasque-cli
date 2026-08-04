@@ -6,6 +6,7 @@ import pytest
 from typer.testing import CliRunner
 
 from datamasque_cli.main import app
+from datamasque_cli.output import ExitCode
 
 pytestmark = pytest.mark.integration
 
@@ -16,5 +17,5 @@ def test_delete_nonexistent_aborts_not_found(runner: CliRunner, resource: str) -
 
     result = runner.invoke(app, [resource, "delete", missing, "--yes"])
 
-    assert result.exit_code != 0
+    assert result.exit_code == ExitCode.NOT_FOUND
     assert "not found" in result.stderr.lower()

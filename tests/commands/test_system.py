@@ -172,8 +172,10 @@ def test_admin_install_does_not_swallow_non_401_errors(mock_get_unauth: MagicMoc
         ],
     )
 
-    assert result.exit_code != 0
+    assert result.exit_code == ExitCode.ERROR
     assert "already complete" not in result.stderr
+    assert "400 Bad Request" in result.stderr
+    assert "Traceback" not in result.stderr
 
 
 @patch(f"{MODULE}.get_unauthenticated_client")

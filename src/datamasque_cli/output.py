@@ -49,6 +49,10 @@ stdout_console = Console(theme=_DM_THEME)
 _SENSITIVE_FIELD_SUBSTRINGS = ("password", "secret", "token", "key", "credential")
 _REDACTED = "<redacted>"
 
+# Mirrors the server's limit: at or above this, validation is queued and returns no verdict.
+MAX_SYNC_VALIDATION_KIB = 60
+_BYTES_PER_KIB = 1024
+
 
 class ErrorCode(StrEnum):
     """Stable, machine-readable error categories.
@@ -65,6 +69,7 @@ class ErrorCode(StrEnum):
     AUTH_FAILED = "auth_failed"
     CONFLICT = "conflict"
     TRANSPORT_ERROR = "transport_error"
+    CANCELLED = "cancelled"
 
 
 class ExitCode(IntEnum):
@@ -72,7 +77,7 @@ class ExitCode(IntEnum):
 
     OK = 0
     ERROR = 1
-    USAGE = 2
+    USAGE_ERROR = 2
     NOT_FOUND = 3
     INVALID_INPUT = 4
     AMBIGUOUS = 5
@@ -80,8 +85,11 @@ class ExitCode(IntEnum):
     AUTH_FAILED = 7
     CONFLICT = 8
     TRANSPORT_ERROR = 9
+    CANCELLED = 10
 
 
+# Stable across minor versions so agents can branch on them. `OK` and `USAGE_ERROR`
+# are absent because `abort()` never produces them; typer returns 2 by itself.
 EXIT_CODE_BY_ERROR: dict[ErrorCode, ExitCode] = {
     ErrorCode.ERROR: ExitCode.ERROR,
     ErrorCode.NOT_FOUND: ExitCode.NOT_FOUND,
@@ -91,6 +99,7 @@ EXIT_CODE_BY_ERROR: dict[ErrorCode, ExitCode] = {
     ErrorCode.AUTH_FAILED: ExitCode.AUTH_FAILED,
     ErrorCode.CONFLICT: ExitCode.CONFLICT,
     ErrorCode.TRANSPORT_ERROR: ExitCode.TRANSPORT_ERROR,
+    ErrorCode.CANCELLED: ExitCode.CANCELLED,
 }
 
 
@@ -264,8 +273,15 @@ def abort(message: str, *, code: ErrorCode = ErrorCode.ERROR, hint: str | None =
     raise SystemExit(EXIT_CODE_BY_ERROR[code])
 
 
+def confirm_or_abort(message: str) -> None:
+    """Ask `message`, and abort with `cancelled` when the answer is no."""
+    if typer.confirm(message):
+        return
+    abort("Cancelled.", code=ErrorCode.CANCELLED)
+
+
 def abort_api_error(prefix: str, exc: DataMasqueApiError, *, conflict_hint: str | None = None) -> NoReturn:
-    """Abort with the admin server's own explanation of a failed request."""
+    """Abort with DataMasque's explanation of a failed request."""
     try:
         body = exc.response.json()
     except ValueError:
@@ -295,15 +311,16 @@ def abort_if_empty(yaml_content: str, file: Path) -> None:
     abort(f"{file} contains no YAML content.", code=ErrorCode.INVALID_INPUT)
 
 
-def abort_if_async_validation(yaml_content: str, *, subject: str, create_command: str, status_command: str) -> None:
+def abort_if_too_large_for_sync_validation(
+    yaml_content: str, *, subject: str, create_command: str, status_command: str
+) -> None:
     """Abort when `yaml_content` is too large for the server to validate synchronously."""
-    kib = 1024
-    max_sync_kib = 60
     size = len(yaml_content.encode("utf-8"))
-    if size < max_sync_kib * kib:
+    if size < MAX_SYNC_VALIDATION_KIB * _BYTES_PER_KIB:
         return
     abort(
-        f"{subject} is {size // kib} KiB; validation for YAML of {max_sync_kib} KiB or larger runs asynchronously.",
+        f"{subject} is {size // _BYTES_PER_KIB} KiB; "
+        f"validation for YAML of {MAX_SYNC_VALIDATION_KIB} KiB or larger runs asynchronously.",
         code=ErrorCode.INVALID_INPUT,
         hint=f"Create it with `{create_command}`, then check `{status_command}` until validation finishes.",
     )

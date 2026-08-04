@@ -11,7 +11,7 @@
   - `dm discover configs` — list, get, defaults, create, delete, validate,
     and status for discovery configs (`database` or `file`).
   - `dm discover libraries` — list, get, create, delete, validate, and status
-    for discovery config libraries (untyped; shared by both config types).
+    for discovery config libraries.
   - `dm discover schema --config <name>` and `dm discover file
     [--config <name>]` start discovery runs with or without a specific config.
   - `dm discover config-snapshot <run-id>` downloads the discovery config a run
@@ -23,8 +23,15 @@
   poll `status` instead.
 - Safe Data Preview: `dm discover schema-results` and `dm discover file-report`
   include `safe_data_preview` in their `--json` output.
+
+### Fixed
+
 - `dm rulesets generate`, `dm connections update --password`, and the
   deprecated `dm system import` no longer fail.
+
+### Changed
+- A declined confirmation prompt now exits 10 (`cancelled`) instead of 1,
+  so a decision is not reported as a failure. Ctrl-C still exits 1.
 
 ## v1.4.0
 

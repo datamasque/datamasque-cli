@@ -6,6 +6,7 @@ import pytest
 from typer.testing import CliRunner
 
 from datamasque_cli.main import app
+from datamasque_cli.output import ExitCode
 
 pytestmark = pytest.mark.integration
 
@@ -41,7 +42,7 @@ def test_create_without_type_aborts_when_name_is_ambiguous(
 
     result = runner.invoke(app, ["rulesets", "create", "--name", ruleset_name, "--file", str(file_yaml)])
 
-    assert result.exit_code != 0
+    assert result.exit_code == ExitCode.AMBIGUOUS
     assert "Multiple rulesets" in result.stderr
 
 
@@ -79,6 +80,6 @@ def test_delete_with_type_leaves_other_namespace_intact(
     file_gone = runner.invoke(app, ["rulesets", "get", ruleset_name, "--type", "file", "--yaml"])
     db_still = runner.invoke(app, ["rulesets", "get", ruleset_name, "--type", "database", "--yaml"])
 
-    assert file_gone.exit_code != 0
+    assert file_gone.exit_code == ExitCode.NOT_FOUND
     assert db_still.exit_code == 0
     assert "mask_table" in db_still.stdout

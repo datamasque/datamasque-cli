@@ -4,6 +4,7 @@ from http import HTTPStatus
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
 from datamasque.client.exceptions import DataMasqueApiError
 from datamasque.client.models.status import ValidationErrorDetails, ValidationStatus
 from typer.testing import CliRunner
@@ -12,6 +13,23 @@ from datamasque_cli.main import app
 from datamasque_cli.output import ExitCode
 
 MODULE = "datamasque_cli.commands.ruleset_libraries"
+
+
+def _make_ruleset_library(
+    name: str,
+    namespace: str = "",
+    library_id: str = "lib-uuid",
+    is_valid: ValidationStatus | None = None,
+    validation_errors: list[ValidationErrorDetails] | None = None,
+) -> SimpleNamespace:
+    """A ruleset library as the server returns it, carrying its validation status."""
+    return SimpleNamespace(
+        id=library_id,
+        name=name,
+        namespace=namespace,
+        is_valid=is_valid,
+        validation_errors=validation_errors or [],
+    )
 
 
 @patch(f"{MODULE}.get_client")
@@ -24,7 +42,7 @@ def test_delete_in_use_reports_server_reason(mock_get_client: MagicMock, runner:
     """
     client = MagicMock()
     mock_get_client.return_value = client
-    client.get_ruleset_library_by_name.return_value = SimpleNamespace(id="lib-uuid", name="lib", namespace="")
+    client.get_ruleset_library_by_name.return_value = _make_ruleset_library("lib")
     response = MagicMock()
     response.status_code = HTTPStatus.CONFLICT
     response.json.return_value = {
@@ -42,13 +60,6 @@ def test_delete_in_use_reports_server_reason(mock_get_client: MagicMock, runner:
     assert "--force" in result.stderr
 
 
-def _validated_library(
-    is_valid: ValidationStatus | None,
-    validation_errors: list[SimpleNamespace] | None = None,
-) -> SimpleNamespace:
-    return SimpleNamespace(id="lib-uuid", is_valid=is_valid, validation_errors=validation_errors or [])
-
-
 @patch(f"{MODULE}.get_client")
 def test_delete_library_aborts_when_missing(mock_get_client: MagicMock, runner: CliRunner) -> None:
     client = MagicMock()
@@ -57,7 +68,7 @@ def test_delete_library_aborts_when_missing(mock_get_client: MagicMock, runner: 
 
     result = runner.invoke(app, ["libraries", "delete", "nope", "--yes"])
 
-    assert result.exit_code != 0
+    assert result.exit_code == ExitCode.NOT_FOUND
     client.delete_ruleset_library_by_name_if_exists.assert_not_called()
 
 
@@ -77,8 +88,8 @@ def test_delete_library_proceeds_when_present(mock_get_client: MagicMock, runner
 def test_validate_library_reports_status(mock_get_client: MagicMock, runner: CliRunner) -> None:
     client = MagicMock()
     mock_get_client.return_value = client
-    client.get_ruleset_library_by_name.return_value = SimpleNamespace(id="lib-uuid", name="my-lib", namespace="")
-    client.validate_ruleset_library.return_value = _validated_library(ValidationStatus.valid)
+    client.get_ruleset_library_by_name.return_value = _make_ruleset_library("my-lib")
+    client.validate_ruleset_library.return_value = _make_ruleset_library("my-lib", is_valid=ValidationStatus.valid)
 
     result = runner.invoke(app, ["libraries", "validate", "my-lib"])
 
@@ -95,7 +106,7 @@ def test_validate_library_aborts_when_missing(mock_get_client: MagicMock, runner
 
     result = runner.invoke(app, ["libraries", "validate", "missing"])
 
-    assert result.exit_code != 0
+    assert result.exit_code == ExitCode.NOT_FOUND
     client.validate_ruleset_library.assert_not_called()
 
 
@@ -103,12 +114,13 @@ def test_validate_library_aborts_when_missing(mock_get_client: MagicMock, runner
 def test_validate_library_invalid_prints_errors_and_exits_4(mock_get_client: MagicMock, runner: CliRunner) -> None:
     client = MagicMock()
     mock_get_client.return_value = client
-    client.get_ruleset_library_by_name.return_value = SimpleNamespace(id="lib-uuid", name="my-lib", namespace="")
-    client.validate_ruleset_library.return_value = _validated_library(
-        ValidationStatus.invalid,
-        [
-            SimpleNamespace(message="unknown mask type 'from_nowhere'", line_number=3),
-            SimpleNamespace(message="duplicate anchor 'email'", line_number=None),
+    client.get_ruleset_library_by_name.return_value = _make_ruleset_library("my-lib")
+    client.validate_ruleset_library.return_value = _make_ruleset_library(
+        "my-lib",
+        is_valid=ValidationStatus.invalid,
+        validation_errors=[
+            ValidationErrorDetails(message="unknown mask type 'from_nowhere'", line_number=3),
+            ValidationErrorDetails(message="duplicate anchor 'email'", line_number=None),
         ],
     )
 
@@ -124,8 +136,10 @@ def test_validate_library_invalid_prints_errors_and_exits_4(mock_get_client: Mag
 def test_validate_library_nonterminal_status_passes_through(mock_get_client: MagicMock, runner: CliRunner) -> None:
     client = MagicMock()
     mock_get_client.return_value = client
-    client.get_ruleset_library_by_name.return_value = SimpleNamespace(id="lib-uuid", name="my-lib", namespace="")
-    client.validate_ruleset_library.return_value = _validated_library(ValidationStatus.in_progress)
+    client.get_ruleset_library_by_name.return_value = _make_ruleset_library("my-lib")
+    client.validate_ruleset_library.return_value = _make_ruleset_library(
+        "my-lib", is_valid=ValidationStatus.in_progress
+    )
 
     result = runner.invoke(app, ["libraries", "validate", "my-lib"])
 
@@ -133,32 +147,35 @@ def test_validate_library_nonterminal_status_passes_through(mock_get_client: Mag
     assert "in_progress" in result.stderr
 
 
+@pytest.mark.parametrize(
+    ("is_valid", "errors", "expected_exit"),
+    [
+        (ValidationStatus.valid, [], ExitCode.OK),
+        (
+            ValidationStatus.invalid,
+            [ValidationErrorDetails(message="Unknown mask `nope`.")],
+            ExitCode.INVALID_INPUT,
+        ),
+    ],
+    ids=["valid", "invalid"],
+)
 @patch(f"{MODULE}.get_client")
-def test_status_valid_exits_0(mock_get_client: MagicMock, runner: CliRunner) -> None:
+def test_status_reports_state_and_exit_code(
+    mock_get_client: MagicMock,
+    runner: CliRunner,
+    is_valid: ValidationStatus,
+    errors: list[ValidationErrorDetails],
+    expected_exit: ExitCode,
+) -> None:
     client = MagicMock()
     mock_get_client.return_value = client
-    client.get_ruleset_library_by_name.return_value = SimpleNamespace(
-        namespace="", name="lib", is_valid=ValidationStatus.valid, validation_errors=[]
+    client.get_ruleset_library_by_name.return_value = _make_ruleset_library(
+        "lib", is_valid=is_valid, validation_errors=errors
     )
 
     result = runner.invoke(app, ["libraries", "status", "lib", "--json"])
 
-    assert result.exit_code == 0
-    assert '"status": "valid"' in result.stdout
-
-
-@patch(f"{MODULE}.get_client")
-def test_status_invalid_exits_4(mock_get_client: MagicMock, runner: CliRunner) -> None:
-    client = MagicMock()
-    mock_get_client.return_value = client
-    client.get_ruleset_library_by_name.return_value = SimpleNamespace(
-        namespace="",
-        name="lib",
-        is_valid=ValidationStatus.invalid,
-        validation_errors=[ValidationErrorDetails(message="Unknown mask `nope`.")],
-    )
-
-    result = runner.invoke(app, ["libraries", "status", "lib", "--json"])
-
-    assert result.exit_code == ExitCode.INVALID_INPUT
-    assert "Unknown mask `nope`." in result.stdout
+    assert result.exit_code == expected_exit
+    assert f'"status": "{is_valid.value}"' in result.stdout
+    for error in errors:
+        assert error.message in result.stdout

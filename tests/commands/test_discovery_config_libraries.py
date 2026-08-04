@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from http import HTTPStatus
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
 from datamasque.client.exceptions import DataMasqueApiError
-from datamasque.client.models.discovery_config_library import DiscoveryConfigLibrary, DiscoveryConfigLibraryId
 from datamasque.client.models.status import ValidationStatus
 from typer.testing import CliRunner
 
@@ -17,20 +16,22 @@ from datamasque_cli.output import ExitCode
 MODULE = "datamasque_cli.commands.discovery_config_libraries"
 
 
-def _library(
+def _make_library(
     name: str,
     namespace: str = "",
     library_id: str = "lib-uuid",
     is_valid: ValidationStatus | None = ValidationStatus.valid,
     usage_count: int = 0,
     yaml: str | None = None,
+    validation_error: str | None = None,
 ) -> SimpleNamespace:
+    """A discovery config library as the server returns it, carrying its validation status."""
     return SimpleNamespace(
         id=library_id,
         name=name,
         namespace=namespace,
         is_valid=is_valid,
-        validation_error=None,
+        validation_error=validation_error,
         usage_count=usage_count,
         created=None,
         modified=None,
@@ -38,26 +39,12 @@ def _library(
     )
 
 
-def _create_returning(
-    is_valid: ValidationStatus | None,
-    validation_error: str | None = None,
-) -> Callable[[DiscoveryConfigLibrary], DiscoveryConfigLibrary]:
-
-    def fake_create(library: DiscoveryConfigLibrary) -> DiscoveryConfigLibrary:
-        library.id = DiscoveryConfigLibraryId("lib-uuid")
-        library.is_valid = is_valid
-        library.validation_error = validation_error
-        return library
-
-    return fake_create
-
-
 @patch(f"{MODULE}.get_client")
 def test_list_shows_namespace_and_usage(mock_get_client: MagicMock, runner: CliRunner) -> None:
     client = MagicMock()
     mock_get_client.return_value = client
     client.list_discovery_config_libraries.return_value = [
-        _library("finance", namespace="org", usage_count=3),
+        _make_library("finance", namespace="org", usage_count=3),
     ]
 
     result = runner.invoke(app, ["discover", "libraries", "list", "--json"])
@@ -72,7 +59,9 @@ def test_list_shows_namespace_and_usage(mock_get_client: MagicMock, runner: CliR
 def test_get_yaml_fetches_full_library(mock_get_client: MagicMock, runner: CliRunner) -> None:
     client = MagicMock()
     mock_get_client.return_value = client
-    client.get_discovery_config_library_by_name.return_value = _library("finance", namespace="org", yaml="labels: []\n")
+    client.get_discovery_config_library_by_name.return_value = _make_library(
+        "finance", namespace="org", yaml="labels: []\n"
+    )
 
     result = runner.invoke(app, ["discover", "libraries", "get", "finance", "--namespace", "org", "--yaml"])
 
@@ -116,7 +105,7 @@ def test_create_posts_library(mock_get_client: MagicMock, runner: CliRunner, tmp
 def test_delete_force_passes_through(mock_get_client: MagicMock, runner: CliRunner) -> None:
     client = MagicMock()
     mock_get_client.return_value = client
-    client.get_discovery_config_library_by_name.return_value = _library("finance", namespace="org")
+    client.get_discovery_config_library_by_name.return_value = _make_library("finance", namespace="org")
 
     result = runner.invoke(app, ["discover", "libraries", "delete", "finance", "-n", "org", "--force", "--yes"])
 
@@ -134,7 +123,7 @@ def test_delete_in_use_reports_server_reason(mock_get_client: MagicMock, runner:
     """
     client = MagicMock()
     mock_get_client.return_value = client
-    client.get_discovery_config_library_by_name.return_value = _library("finance")
+    client.get_discovery_config_library_by_name.return_value = _make_library("finance")
     response = MagicMock()
     response.status_code = HTTPStatus.CONFLICT
     response.json.return_value = {
@@ -158,7 +147,7 @@ def test_delete_other_api_error_is_generic_failure(mock_get_client: MagicMock, r
     """Non-409 API failures still abort cleanly rather than raising."""
     client = MagicMock()
     mock_get_client.return_value = client
-    client.get_discovery_config_library_by_name.return_value = _library("finance")
+    client.get_discovery_config_library_by_name.return_value = _make_library("finance")
     response = MagicMock()
     response.status_code = HTTPStatus.INTERNAL_SERVER_ERROR
     response.json.side_effect = ValueError("no body")
@@ -201,7 +190,7 @@ def test_validate_empty_file_aborts_before_any_request(
 def test_validate_reports_valid(mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path) -> None:
     client = MagicMock()
     mock_get_client.return_value = client
-    client.create_discovery_config_library.side_effect = _create_returning(ValidationStatus.valid)
+    client.create_discovery_config_library.return_value = _make_library("finance", is_valid=ValidationStatus.valid)
     lib = tmp_path / "lib.yaml"
     lib.write_text("labels: []\n")
 
@@ -219,8 +208,8 @@ def test_validate_reports_valid(mock_get_client: MagicMock, runner: CliRunner, t
 def test_validate_invalid_exits_4(mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path) -> None:
     client = MagicMock()
     mock_get_client.return_value = client
-    client.create_discovery_config_library.side_effect = _create_returning(
-        ValidationStatus.invalid, validation_error="duplicate label 'email'"
+    client.create_discovery_config_library.return_value = _make_library(
+        "finance", is_valid=ValidationStatus.invalid, validation_error="duplicate label 'email'"
     )
     lib = tmp_path / "lib.yaml"
     lib.write_text("labels: []\n")
@@ -238,7 +227,7 @@ def test_validate_warns_when_temp_library_cleanup_fails(
 ) -> None:
     client = MagicMock()
     mock_get_client.return_value = client
-    client.create_discovery_config_library.side_effect = _create_returning(ValidationStatus.valid)
+    client.create_discovery_config_library.return_value = _make_library("finance", is_valid=ValidationStatus.valid)
     client.delete_discovery_config_library_by_id_if_exists.side_effect = DataMasqueApiError(
         "boom", response=MagicMock()
     )
@@ -251,27 +240,31 @@ def test_validate_warns_when_temp_library_cleanup_fails(
     assert "left on server" in result.stderr
 
 
+@pytest.mark.parametrize(
+    ("is_valid", "validation_error", "expected_exit"),
+    [
+        (ValidationStatus.valid, None, ExitCode.OK),
+        (ValidationStatus.invalid, "duplicate label 'email'", ExitCode.INVALID_INPUT),
+    ],
+    ids=["valid", "invalid"],
+)
 @patch(f"{MODULE}.get_client")
-def test_status_valid_exits_0(mock_get_client: MagicMock, runner: CliRunner) -> None:
+def test_status_reports_state_and_exit_code(
+    mock_get_client: MagicMock,
+    runner: CliRunner,
+    is_valid: ValidationStatus,
+    validation_error: str | None,
+    expected_exit: ExitCode,
+) -> None:
     client = MagicMock()
     mock_get_client.return_value = client
-    client.get_discovery_config_library_by_name.return_value = _library("finance", namespace="org")
-
-    result = runner.invoke(app, ["discover", "libraries", "status", "finance", "-n", "org", "--json"])
-
-    assert result.exit_code == 0
-    assert '"status": "valid"' in result.stdout
-
-
-@patch(f"{MODULE}.get_client")
-def test_status_invalid_exits_4(mock_get_client: MagicMock, runner: CliRunner) -> None:
-    client = MagicMock()
-    mock_get_client.return_value = client
-    library = _library("finance", is_valid=ValidationStatus.invalid)
-    library.validation_error = "duplicate label 'email'"
-    client.get_discovery_config_library_by_name.return_value = library
+    client.get_discovery_config_library_by_name.return_value = _make_library(
+        "finance", is_valid=is_valid, validation_error=validation_error
+    )
 
     result = runner.invoke(app, ["discover", "libraries", "status", "finance", "--json"])
 
-    assert result.exit_code == ExitCode.INVALID_INPUT
-    assert "duplicate label 'email'" in result.stdout
+    assert result.exit_code == expected_exit
+    assert f'"status": "{is_valid.value}"' in result.stdout
+    if validation_error:
+        assert validation_error in result.stdout

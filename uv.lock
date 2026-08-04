@@ -141,10 +141,11 @@ wheels = [
 
 [[package]]
 name = "datamasque-cli"
-version = "1.4.0"
+version = "1.5.0"
 source = { editable = "." }
 dependencies = [
     { name = "datamasque-python" },
+    { name = "pydantic" },
     { name = "tomli-w" },
     { name = "typer" },
 ]
@@ -160,6 +161,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "datamasque-python", specifier = ">=1.2.2,<2" },
+    { name = "pydantic", specifier = ">=2.5,<3" },
     { name = "tomli-w", specifier = ">=1.0.0" },
     { name = "typer", specifier = ">=0.15.0" },
 ]

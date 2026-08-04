@@ -245,7 +245,7 @@ dm discover configs status <name> [--type database]                # Validation 
 
 #### Discovery config libraries
 
-Libraries are untyped — the same library can be imported by both database and file discovery configs.
+The same library can be imported by both database and file discovery configs.
 
 ```console
 dm discover libraries list
@@ -341,6 +341,7 @@ empty on failure):
 |    7 | auth_failed       | credentials rejected by server                 |
 |    8 | conflict          | operation rejected by server state             |
 |    9 | transport_error   | network or TLS failure                         |
+|   10 | cancelled         | you answered no to a confirmation prompt       |
 
 Exit codes are stable across minor versions. The `error.code` string in the
 JSON envelope mirrors these names.

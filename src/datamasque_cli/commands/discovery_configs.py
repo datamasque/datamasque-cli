@@ -17,9 +17,10 @@ from datamasque_cli.output import (
     ExitCode,
     abort,
     abort_api_error,
-    abort_if_async_validation,
     abort_if_empty,
     abort_if_invalid,
+    abort_if_too_large_for_sync_validation,
+    confirm_or_abort,
     print_info,
     print_success,
     print_warning,
@@ -116,7 +117,7 @@ def get_config(
 
 
 @app.command("defaults")
-def config_defaults(
+def get_default_config(
     config_type: DiscoveryConfigType = typer.Option(
         DiscoveryConfigType.database, "--type", "-t", help="Config type: database or file"
     ),
@@ -130,7 +131,7 @@ def config_defaults(
     yaml_content = response.content.decode("utf-8")
 
     if output is not None:
-        output.write_text(yaml_content)
+        output.write_text(yaml_content, encoding="utf-8")
         print_success(f"Default {config_type.value} discovery config written to {output}")
         return
 
@@ -161,10 +162,10 @@ def create_config(
     existing = _find_by_name(client, name)
 
     if config_type is not None:
-        cfg_type = config_type
+        resolved_type = config_type
     elif len(existing) == 1:
-        cfg_type = existing[0].config_type
-        print_info(f"Updating existing {cfg_type.value}-type discovery config '{name}'.")
+        resolved_type = existing[0].config_type
+        print_info(f"Updating existing {resolved_type.value}-type discovery config '{name}'.")
     elif not existing:
         abort(
             f"No discovery config named '{name}' exists.",
@@ -179,12 +180,12 @@ def create_config(
             hint="Pass --type file|database to pick which one to update.",
         )
 
-    yaml_content = file.read_text()
+    yaml_content = file.read_text(encoding="utf-8")
     abort_if_empty(yaml_content, file)
 
-    config = DiscoveryConfig(name=name, yaml=yaml_content, config_type=cfg_type)
+    config = DiscoveryConfig(name=name, yaml=yaml_content, config_type=resolved_type)
     client.create_or_update_discovery_config(config)
-    print_success(f"Discovery config '{name}' ({cfg_type.value}) created/updated.")
+    print_success(f"Discovery config '{name}' ({resolved_type.value}) created/updated.")
 
 
 @app.command("delete")
@@ -201,7 +202,7 @@ def delete_config(
     match = _collapse_to_one_or_abort(_find_by_name(client, name, config_type), name)
 
     if not is_confirmed:
-        typer.confirm(f"Delete discovery config '{name}' ({match.config_type.value})?", abort=True)
+        confirm_or_abort(f"Delete discovery config '{name}' ({match.config_type.value})?")
 
     assert match.id is not None
     client.delete_discovery_config_by_id_if_exists(match.id)
@@ -219,11 +220,11 @@ def validate_config(
     Creates a temporary config to trigger server-side validation,
     then deletes it. Reports any validation errors.
 
-    Note that configs over 60 KB validate asynchronously and cannot be validated here.
+    Note that configs over 60 KiB validate asynchronously and cannot be validated here.
     """
-    yaml_content = file.read_text()
+    yaml_content = file.read_text(encoding="utf-8")
     abort_if_empty(yaml_content, file)
-    abort_if_async_validation(
+    abort_if_too_large_for_sync_validation(
         yaml_content,
         subject=f'Discovery config "{file.name}"',
         create_command=f"dm discover configs create --name <name> --type {config_type.value} -f {file}",
@@ -256,7 +257,7 @@ def validate_config(
 
 
 @app.command("status")
-def config_status(
+def show_config_status(
     name: str = typer.Argument(help="Discovery config name"),
     config_type: DiscoveryConfigType | None = typer.Option(
         None, "--type", "-t", help="Required when two configs share a name"

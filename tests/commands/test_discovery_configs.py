@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from http import HTTPStatus
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
 from datamasque.client.exceptions import DataMasqueApiError
-from datamasque.client.models.discovery_config import DiscoveryConfig, DiscoveryConfigId, DiscoveryConfigType
+from datamasque.client.models.discovery_config import DiscoveryConfigType
 from datamasque.client.models.status import ValidationStatus
 from typer.testing import CliRunner
 
@@ -17,45 +17,33 @@ from datamasque_cli.output import ExitCode
 MODULE = "datamasque_cli.commands.discovery_configs"
 
 
-def _config(
+def _make_discovery_config(
     name: str,
     config_type: DiscoveryConfigType = DiscoveryConfigType.database,
     config_id: str = "cfg-uuid",
     is_valid: ValidationStatus | None = ValidationStatus.valid,
     yaml: str | None = None,
+    validation_error: str | None = None,
 ) -> SimpleNamespace:
+    """A discovery config as the server returns it, carrying its validation status."""
     return SimpleNamespace(
         id=config_id,
         name=name,
         config_type=config_type,
         is_valid=is_valid,
-        validation_error=None,
+        validation_error=validation_error,
+        validation_error_details=[],
         created=None,
         modified=None,
         yaml=yaml,
     )
 
 
-def _create_returning(
-    is_valid: ValidationStatus | None,
-    validation_error: str | None = None,
-) -> Callable[[DiscoveryConfig], DiscoveryConfig]:
-
-    def fake_create(config: DiscoveryConfig) -> DiscoveryConfig:
-        config.id = DiscoveryConfigId("cfg-uuid")
-        config.is_valid = is_valid
-        config.validation_error = validation_error
-        config.validation_error_details = []
-        return config
-
-    return fake_create
-
-
 @patch(f"{MODULE}.get_client")
 def test_unknown_type_is_rejected_before_any_request(mock_get_client: MagicMock, runner: CliRunner) -> None:
     result = runner.invoke(app, ["discover", "configs", "list", "--type", "banana"])
 
-    assert result.exit_code == ExitCode.USAGE
+    assert result.exit_code == ExitCode.USAGE_ERROR
     assert "is not one of" in result.output
     mock_get_client.assert_not_called()
 
@@ -65,8 +53,8 @@ def test_list_filters_by_type(mock_get_client: MagicMock, runner: CliRunner) -> 
     client = MagicMock()
     mock_get_client.return_value = client
     client.list_discovery_configs.return_value = [
-        _config("emp", DiscoveryConfigType.database),
-        _config("docs", DiscoveryConfigType.file),
+        _make_discovery_config("emp", DiscoveryConfigType.database),
+        _make_discovery_config("docs", DiscoveryConfigType.file),
     ]
 
     result = runner.invoke(app, ["discover", "configs", "list", "--type", "file"])
@@ -80,8 +68,8 @@ def test_list_filters_by_type(mock_get_client: MagicMock, runner: CliRunner) -> 
 def test_get_yaml_fetches_full_config(mock_get_client: MagicMock, runner: CliRunner) -> None:
     client = MagicMock()
     mock_get_client.return_value = client
-    client.list_discovery_configs.return_value = [_config("emp")]
-    client.get_discovery_config.return_value = _config("emp", yaml="labels: []\n")
+    client.list_discovery_configs.return_value = [_make_discovery_config("emp")]
+    client.get_discovery_config.return_value = _make_discovery_config("emp", yaml="labels: []\n")
 
     result = runner.invoke(app, ["discover", "configs", "get", "emp", "--yaml"])
 
@@ -95,8 +83,8 @@ def test_get_ambiguous_name_aborts(mock_get_client: MagicMock, runner: CliRunner
     client = MagicMock()
     mock_get_client.return_value = client
     client.list_discovery_configs.return_value = [
-        _config("shared", DiscoveryConfigType.database, config_id="a"),
-        _config("shared", DiscoveryConfigType.file, config_id="b"),
+        _make_discovery_config("shared", DiscoveryConfigType.database, config_id="a"),
+        _make_discovery_config("shared", DiscoveryConfigType.file, config_id="b"),
     ]
 
     result = runner.invoke(app, ["discover", "configs", "get", "shared"])
@@ -110,10 +98,10 @@ def test_get_ambiguous_resolved_by_type(mock_get_client: MagicMock, runner: CliR
     client = MagicMock()
     mock_get_client.return_value = client
     client.list_discovery_configs.return_value = [
-        _config("shared", DiscoveryConfigType.database, config_id="a"),
-        _config("shared", DiscoveryConfigType.file, config_id="b"),
+        _make_discovery_config("shared", DiscoveryConfigType.database, config_id="a"),
+        _make_discovery_config("shared", DiscoveryConfigType.file, config_id="b"),
     ]
-    client.get_discovery_config.return_value = _config("shared", DiscoveryConfigType.file, config_id="b")
+    client.get_discovery_config.return_value = _make_discovery_config("shared", DiscoveryConfigType.file, config_id="b")
 
     result = runner.invoke(app, ["discover", "configs", "get", "shared", "--type", "file"])
 
@@ -159,7 +147,7 @@ def test_create_new_requires_type(mock_get_client: MagicMock, runner: CliRunner,
 def test_create_update_defaults_to_existing_type(mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path) -> None:
     client = MagicMock()
     mock_get_client.return_value = client
-    client.list_discovery_configs.return_value = [_config("emp", DiscoveryConfigType.database)]
+    client.list_discovery_configs.return_value = [_make_discovery_config("emp", DiscoveryConfigType.database)]
     cfg = tmp_path / "cfg.yaml"
     cfg.write_text("labels: []\n")
 
@@ -173,7 +161,7 @@ def test_create_update_defaults_to_existing_type(mock_get_client: MagicMock, run
 def test_delete_proceeds_when_present(mock_get_client: MagicMock, runner: CliRunner) -> None:
     client = MagicMock()
     mock_get_client.return_value = client
-    client.list_discovery_configs.return_value = [_config("emp")]
+    client.list_discovery_configs.return_value = [_make_discovery_config("emp")]
 
     result = runner.invoke(app, ["discover", "configs", "delete", "emp", "--yes"])
 
@@ -197,7 +185,7 @@ def test_delete_aborts_when_missing(mock_get_client: MagicMock, runner: CliRunne
 def test_validate_reports_valid(mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path) -> None:
     client = MagicMock()
     mock_get_client.return_value = client
-    client.create_discovery_config.side_effect = _create_returning(ValidationStatus.valid)
+    client.create_discovery_config.return_value = _make_discovery_config("emp", is_valid=ValidationStatus.valid)
     cfg = tmp_path / "cfg.yaml"
     cfg.write_text("labels: []\n")
 
@@ -216,8 +204,8 @@ def test_validate_reports_valid(mock_get_client: MagicMock, runner: CliRunner, t
 def test_validate_invalid_exits_4(mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path) -> None:
     client = MagicMock()
     mock_get_client.return_value = client
-    client.create_discovery_config.side_effect = _create_returning(
-        ValidationStatus.invalid, validation_error="unknown label 'foo'"
+    client.create_discovery_config.return_value = _make_discovery_config(
+        "emp", is_valid=ValidationStatus.invalid, validation_error="unknown label 'foo'"
     )
     cfg = tmp_path / "cfg.yaml"
     cfg.write_text("labels: []\n")
@@ -257,7 +245,7 @@ def test_validate_warns_when_temp_config_cleanup_fails(
 ) -> None:
     client = MagicMock()
     mock_get_client.return_value = client
-    client.create_discovery_config.side_effect = _create_returning(ValidationStatus.valid)
+    client.create_discovery_config.return_value = _make_discovery_config("emp", is_valid=ValidationStatus.valid)
     client.delete_discovery_config_by_id_if_exists.side_effect = DataMasqueApiError("boom", response=MagicMock())
     cfg = tmp_path / "cfg.yaml"
     cfg.write_text("labels: []\n")
@@ -296,39 +284,32 @@ def test_validate_oversize_aborts_before_any_request(
     mock_get_client.assert_not_called()
 
 
+@pytest.mark.parametrize(
+    ("is_valid", "validation_error", "expected_exit"),
+    [
+        (ValidationStatus.valid, None, ExitCode.OK),
+        (ValidationStatus.invalid, "unknown label 'foo'", ExitCode.INVALID_INPUT),
+        (ValidationStatus.in_progress, None, ExitCode.OK),
+    ],
+    ids=["valid", "invalid", "in_progress"],
+)
 @patch(f"{MODULE}.get_client")
-def test_status_valid_exits_0(mock_get_client: MagicMock, runner: CliRunner) -> None:
+def test_status_reports_state_and_exit_code(
+    mock_get_client: MagicMock,
+    runner: CliRunner,
+    is_valid: ValidationStatus,
+    validation_error: str | None,
+    expected_exit: ExitCode,
+) -> None:
     client = MagicMock()
     mock_get_client.return_value = client
-    client.list_discovery_configs.return_value = [_config("emp")]
+    client.list_discovery_configs.return_value = [
+        _make_discovery_config("emp", is_valid=is_valid, validation_error=validation_error)
+    ]
 
     result = runner.invoke(app, ["discover", "configs", "status", "emp", "--json"])
 
-    assert result.exit_code == 0
-    assert '"status": "valid"' in result.stdout
-
-
-@patch(f"{MODULE}.get_client")
-def test_status_invalid_exits_4(mock_get_client: MagicMock, runner: CliRunner) -> None:
-    client = MagicMock()
-    mock_get_client.return_value = client
-    config = _config("emp", is_valid=ValidationStatus.invalid)
-    config.validation_error = "unknown label 'foo'"
-    client.list_discovery_configs.return_value = [config]
-
-    result = runner.invoke(app, ["discover", "configs", "status", "emp", "--json"])
-
-    assert result.exit_code == ExitCode.INVALID_INPUT
-    assert "unknown label 'foo'" in result.stdout
-
-
-@patch(f"{MODULE}.get_client")
-def test_status_in_progress_exits_0(mock_get_client: MagicMock, runner: CliRunner) -> None:
-    client = MagicMock()
-    mock_get_client.return_value = client
-    client.list_discovery_configs.return_value = [_config("emp", is_valid=ValidationStatus.in_progress)]
-
-    result = runner.invoke(app, ["discover", "configs", "status", "emp", "--json"])
-
-    assert result.exit_code == 0
-    assert '"status": "in_progress"' in result.stdout
+    assert result.exit_code == expected_exit
+    assert f'"status": "{is_valid.value}"' in result.stdout
+    if validation_error:
+        assert validation_error in result.stdout

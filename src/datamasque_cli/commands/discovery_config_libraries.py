@@ -17,6 +17,7 @@ from datamasque_cli.output import (
     abort,
     abort_api_error,
     abort_if_empty,
+    confirm_or_abort,
     print_success,
     print_warning,
     render_output,
@@ -25,7 +26,7 @@ from datamasque_cli.output import (
 app = typer.Typer(help="Manage discovery config libraries (configurable discovery).", no_args_is_help=True)
 
 
-def _label(name: str, namespace: str) -> str:
+def _format_library_label(name: str, namespace: str) -> str:
     """Render a library's display label as `namespace/name`, or bare `name` in the default namespace."""
     return f"{namespace}/{name}" if namespace else name
 
@@ -71,7 +72,10 @@ def get_library(
     lib = client.get_discovery_config_library_by_name(name, namespace)
 
     if lib is None:
-        abort(f"Discovery config library '{_label(name, namespace)}' not found.", code=ErrorCode.NOT_FOUND)
+        abort(
+            f"Discovery config library '{_format_library_label(name, namespace)}' not found.",
+            code=ErrorCode.NOT_FOUND,
+        )
 
     if is_yaml:
         typer.echo(lib.yaml)
@@ -97,13 +101,13 @@ def create_library(
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Create or update a discovery config library from a YAML file."""
-    yaml_content = file.read_text()
+    yaml_content = file.read_text(encoding="utf-8")
     abort_if_empty(yaml_content, file)
 
     client = get_client(profile)
     library = DiscoveryConfigLibrary(name=name, namespace=namespace, yaml=yaml_content)
     client.create_or_update_discovery_config_library(library)
-    print_success(f"Discovery config library '{_label(name, namespace)}' created/updated.")
+    print_success(f"Discovery config library '{_format_library_label(name, namespace)}' created/updated.")
 
 
 @app.command("delete")
@@ -119,14 +123,14 @@ def delete_library(
     If the library is imported by any discovery configs,
     the server rejects the delete unless --force is passed.
     """
-    label = _label(name, namespace)
+    label = _format_library_label(name, namespace)
 
     client = get_client(profile)
     if client.get_discovery_config_library_by_name(name, namespace) is None:
         abort(f"Discovery config library '{label}' not found.", code=ErrorCode.NOT_FOUND)
 
     if not is_confirmed:
-        typer.confirm(f"Delete discovery config library '{label}'?", abort=True)
+        confirm_or_abort(f"Delete discovery config library '{label}'?")
 
     try:
         client.delete_discovery_config_library_by_name_if_exists(name, namespace, force=force)
@@ -150,7 +154,7 @@ def validate_library(
     Creates a temporary library to trigger server-side validation,
     then deletes it. Reports any validation errors.
     """
-    yaml_content = file.read_text()
+    yaml_content = file.read_text(encoding="utf-8")
     abort_if_empty(yaml_content, file)
     temp_name = f"__dm_cli_validate_{uuid.uuid4().hex}"
 
@@ -180,7 +184,7 @@ def validate_library(
 
 
 @app.command("status")
-def library_status(
+def show_library_status(
     name: str = typer.Argument(help="Library name"),
     namespace: str = typer.Option("", "--namespace", "-n", help="Library namespace"),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
@@ -194,7 +198,10 @@ def library_status(
     lib = client.get_discovery_config_library_by_name(name, namespace)
 
     if lib is None:
-        abort(f"Discovery config library '{_label(name, namespace)}' not found.", code=ErrorCode.NOT_FOUND)
+        abort(
+            f"Discovery config library '{_format_library_label(name, namespace)}' not found.",
+            code=ErrorCode.NOT_FOUND,
+        )
 
     status = lib.is_valid.value if lib.is_valid else "unknown"
     data: dict[str, object] = {

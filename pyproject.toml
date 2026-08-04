@@ -1,6 +1,6 @@
 [project]
 name = "datamasque-cli"
-version = "1.4.0"
+version = "1.5.0"
 description = "Official command-line interface for the DataMasque data-masking platform."
 authors = [
     { name = "DataMasque Ltd" },
@@ -13,6 +13,7 @@ dependencies = [
     "typer>=0.15.0",
     "tomli-w>=1.0.0",
     "datamasque-python>=1.2.2,<2",
+    "pydantic>=2.5,<3",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",

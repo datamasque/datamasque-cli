@@ -13,6 +13,7 @@ from datamasque_cli.commands.rulesets import export_bundle, import_bundle
 from datamasque_cli.output import (
     ErrorCode,
     abort,
+    abort_api_error,
     print_json,
     print_success,
     print_warning,
@@ -141,7 +142,7 @@ def admin_install(
                 code=ErrorCode.CONFLICT,
                 hint="Use `dm auth login` to sign in as an existing user.",
             )
-        raise
+        abort_api_error("Admin install failed", e)
     print_success(f"Admin user '{username}' created.")
 
 

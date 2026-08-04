@@ -196,7 +196,7 @@ def test_start_run_aborts_on_destination_type_mismatch(mock_get_client: MagicMoc
 
     result = runner.invoke(app, ["run", "start", "-c", "db_src", "-r", "demo", "-d", "files_dst"])
 
-    assert result.exit_code != 0
+    assert result.exit_code == ExitCode.INVALID_INPUT
     client.start_masking_run.assert_not_called()
 
 
@@ -287,7 +287,7 @@ def test_start_run_aborts_when_file_source_has_no_destination(mock_get_client: M
 
     result = runner.invoke(app, ["run", "start", "-c", "files_src", "-r", "demo"])
 
-    assert result.exit_code != 0
+    assert result.exit_code == ExitCode.INVALID_INPUT
     assert "destination" in result.stderr.lower()
     client.start_masking_run.assert_not_called()
 
@@ -379,7 +379,7 @@ def test_retry_run_aborts_when_original_missing_ruleset(mock_get_client: MagicMo
 
     result = runner.invoke(app, ["run", "retry", "200"])
 
-    assert result.exit_code != 0
+    assert result.exit_code == ExitCode.INVALID_INPUT
     client.start_masking_run.assert_not_called()
 
 
@@ -538,6 +538,24 @@ def test_run_report_aborts_with_friendly_message_on_404(
 
     result = runner.invoke(app, ["run", "report", "42"])
 
-    assert result.exit_code != 0
+    assert result.exit_code == ExitCode.NOT_FOUND
     assert "No report available for run 42" in result.stderr
     assert "dm run status 42" in result.stderr
+
+
+@patch(f"{MODULE}.get_client")
+def test_run_report_reports_server_reason_on_other_errors(
+    mock_get_client: MagicMock, mock_client: MagicMock, runner: CliRunner
+) -> None:
+    """Only a 404 means "no report yet" — other failures must show the server's reason."""
+    mock_get_client.return_value = mock_client
+    response = MagicMock(status_code=500)
+    response.json.return_value = {"detail": "Report storage is unavailable."}
+    mock_client.get_run_report.side_effect = DataMasqueApiError("boom", response=response)
+
+    result = runner.invoke(app, ["run", "report", "42"])
+
+    assert result.exit_code == ExitCode.ERROR
+    assert "Report storage is unavailable." in " ".join(result.stderr.split())
+    assert "No report available" not in result.stderr
+    assert "Traceback" not in result.stderr

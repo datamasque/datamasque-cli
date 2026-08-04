@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -31,7 +32,7 @@ from datamasque_cli.output import ExitCode
 MODULE = "datamasque_cli.commands.discovery"
 
 
-def _string_preview() -> StringPreview:
+def _make_string_preview() -> StringPreview:
     return StringPreview(
         statistics_common=CommonStatistics(count_row=100, count_null=0, count_distinct=76),
         statistics_kind=StringStatistics(
@@ -40,7 +41,7 @@ def _string_preview() -> StringPreview:
     )
 
 
-def _numeric_preview() -> NumericPreview:
+def _make_numeric_preview() -> NumericPreview:
     return NumericPreview(
         statistics_common=CommonStatistics(count_row=500, count_null=0, count_distinct=500),
         statistics_kind=NumericStatistics(
@@ -114,7 +115,7 @@ def test_db_report_split_without_output_aborts(mock_get_client: MagicMock, runne
     assert "-o" in result.stderr
 
 
-def _file_report() -> list[FileDiscoveryResult]:
+def _make_file_report() -> list[FileDiscoveryResult]:
     return [
         FileDiscoveryResult(
             id=7,
@@ -123,7 +124,7 @@ def _file_report() -> list[FileDiscoveryResult]:
             files=[FileDiscoveryFile(path="data.csv", file_type="csv")],
             results=[
                 FileDiscoveryLocatorResult(
-                    locator="phone", matches=[], data_types=["int"], safe_data_preview=_numeric_preview()
+                    locator="phone", matches=[], data_types=["int"], safe_data_preview=_make_numeric_preview()
                 ),
             ],
         ),
@@ -134,7 +135,7 @@ def _file_report() -> list[FileDiscoveryResult]:
 def test_file_report_writes_json_to_output(mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path) -> None:
     client = MagicMock()
     mock_get_client.return_value = client
-    client.get_file_data_discovery_report.return_value = _file_report()
+    client.get_file_data_discovery_report.return_value = _make_file_report()
 
     out = tmp_path / "file.json"
     result = runner.invoke(app, ["discover", "file-report", "7", "--output", str(out)])
@@ -148,7 +149,7 @@ def test_file_report_writes_json_to_output(mock_get_client: MagicMock, runner: C
 def test_file_report_table_lists_locators(mock_get_client: MagicMock, runner: CliRunner) -> None:
     client = MagicMock()
     mock_get_client.return_value = client
-    client.get_file_data_discovery_report.return_value = _file_report()
+    client.get_file_data_discovery_report.return_value = _make_file_report()
 
     result = runner.invoke(app, ["discover", "file-report", "7"])
 
@@ -173,6 +174,7 @@ def test_file_report_table_lists_locators(mock_get_client: MagicMock, runner: Cl
             "discovery config snapshot",
         ),
         (["discover", "schema-results", "42"], "list_schema_discovery_results", 400, "schema discovery results"),
+        (["discover", "file-report", "42"], "get_file_data_discovery_report", 404, "file discovery report"),
     ],
 )
 @patch(f"{MODULE}.get_client")
@@ -202,11 +204,15 @@ def test_missing_run_output_aborts_not_found(
 def test_unexpected_api_error_is_not_swallowed(mock_get_client: MagicMock, runner: CliRunner) -> None:
     client = MagicMock()
     mock_get_client.return_value = client
-    client.get_sdd_report.side_effect = DataMasqueApiError("500", response=SimpleNamespace(status_code=500))
+    response = MagicMock(status_code=500)
+    response.json.return_value = {"detail": "Report generation crashed."}
+    client.get_sdd_report.side_effect = DataMasqueApiError("500", response=response)
 
     result = runner.invoke(app, ["discover", "sdd-report", "42"])
 
-    assert result.exit_code != ExitCode.NOT_FOUND
+    assert result.exit_code == ExitCode.ERROR
+    assert "Report generation crashed." in " ".join(result.stderr.split())
+    assert "Traceback" not in result.stderr
 
 
 # -- schema discovery trigger ---------------------------------------------
@@ -359,7 +365,7 @@ def test_schema_results_includes_safe_data_preview_in_json(mock_get_client: Magi
                 data_type="varchar",
                 discovery_matches=[SimpleNamespace(label="name")],
                 constraint="",
-                safe_data_preview=_string_preview(),
+                safe_data_preview=_make_string_preview(),
             ),
         ),
     ]
@@ -379,14 +385,24 @@ def test_schema_results_includes_safe_data_preview_in_json(mock_get_client: Magi
 # -- configurable-discovery run triggers ----------------------------------
 
 
+def _fake_config_lookup(**ids_by_type: str) -> Callable[[str, DiscoveryConfigType], SimpleNamespace | None]:
+    """Return a `get_discovery_config_by_name` side effect that knows only the given types."""
+
+    def lookup(name: str, config_type: DiscoveryConfigType) -> SimpleNamespace | None:
+        config_id = ids_by_type.get(config_type.value)
+        if config_id is None:
+            return None
+        return SimpleNamespace(id=config_id, name=name, config_type=config_type)
+
+    return lookup
+
+
 @patch(f"{MODULE}.get_client")
 def test_schema_with_config_runs_from_saved_config(mock_get_client: MagicMock, runner: CliRunner) -> None:
     client = MagicMock()
     mock_get_client.return_value = client
     client.list_connections.return_value = [SimpleNamespace(id="abc-123", name="my_db", mask_type="database")]
-    client.list_discovery_configs.return_value = [
-        SimpleNamespace(id="cfg-1", name="emp", config_type=DiscoveryConfigType.database),
-    ]
+    client.get_discovery_config_by_name.side_effect = _fake_config_lookup(database="cfg-1")
     client.start_schema_discovery_run_from_config.return_value = 77
 
     result = runner.invoke(app, ["discover", "schema", "my_db", "--config", "emp"])
@@ -405,13 +421,26 @@ def test_schema_config_wrong_type_aborts(mock_get_client: MagicMock, runner: Cli
     client = MagicMock()
     mock_get_client.return_value = client
     client.list_connections.return_value = [SimpleNamespace(id="abc-123", name="my_db", mask_type="database")]
-    client.list_discovery_configs.return_value = [
-        SimpleNamespace(id="cfg-2", name="docs", config_type=DiscoveryConfigType.file),
-    ]
+    client.get_discovery_config_by_name.side_effect = _fake_config_lookup(file="cfg-2")
 
     result = runner.invoke(app, ["discover", "schema", "my_db", "--config", "docs"])
 
     assert result.exit_code == ExitCode.INVALID_INPUT
+    assert "exists as file" in " ".join(result.stderr.split())
+    client.start_schema_discovery_run_from_config.assert_not_called()
+
+
+@patch(f"{MODULE}.get_client")
+def test_schema_config_not_found_aborts(mock_get_client: MagicMock, runner: CliRunner) -> None:
+    """Neither type holds the name, so this is not-found rather than a type mismatch."""
+    client = MagicMock()
+    mock_get_client.return_value = client
+    client.list_connections.return_value = [SimpleNamespace(id="abc-123", name="my_db", mask_type="database")]
+    client.get_discovery_config_by_name.side_effect = _fake_config_lookup()
+
+    result = runner.invoke(app, ["discover", "schema", "my_db", "--config", "nope"])
+
+    assert result.exit_code == ExitCode.NOT_FOUND
     client.start_schema_discovery_run_from_config.assert_not_called()
 
 
@@ -437,9 +466,7 @@ def test_file_with_config_runs_from_saved_config(mock_get_client: MagicMock, run
     client = MagicMock()
     mock_get_client.return_value = client
     client.list_connections.return_value = [SimpleNamespace(id="fs-1", name="my_files", mask_type="file")]
-    client.list_discovery_configs.return_value = [
-        SimpleNamespace(id="cfg-3", name="docs", config_type=DiscoveryConfigType.file),
-    ]
+    client.get_discovery_config_by_name.side_effect = _fake_config_lookup(file="cfg-3")
     client.start_file_data_discovery_run_from_config.return_value = 89
 
     result = runner.invoke(app, ["discover", "file", "my_files", "--config", "docs"])

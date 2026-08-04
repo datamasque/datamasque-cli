@@ -23,9 +23,10 @@ In agent mode — auto-detected when stdout is not a TTY, `AI_AGENT` is set, or
 
 `error.code` is the stable identifier; branch on it rather than the message.
 The set is `not_found`, `invalid_input`, `ambiguous`, `auth_required`,
-`auth_failed`, `conflict`, `transport_error`, `error`. Exit code is non-zero
-on any error; exit 2 specifically means a CLI usage error (unknown flag,
-missing argument) from typer.
+`auth_failed`, `conflict`, `transport_error`, `cancelled`, `error`. Exit code
+is non-zero on any error; exit 2 specifically means a CLI usage error (unknown
+flag, missing argument) from typer, and exit 10 means the user declined a
+confirmation prompt.
 
 `DM_OUTPUT=table` forces human-readable output.
 

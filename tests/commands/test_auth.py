@@ -6,6 +6,7 @@ from typer.testing import CliRunner
 
 from datamasque_cli.config import Config, Profile
 from datamasque_cli.main import app
+from datamasque_cli.output import ExitCode
 from tests.conftest import make_config
 
 MODULE = "datamasque_cli.commands.auth"
@@ -65,26 +66,26 @@ def test_login_writes_to_named_profile(
 def test_login_rejects_url_without_scheme(_mock_load: MagicMock, mock_save: MagicMock, runner: CliRunner) -> None:
     result = runner.invoke(app, ["auth", "login"], input="localhost\n")
 
-    assert result.exit_code != 0
+    assert result.exit_code == ExitCode.INVALID_INPUT
     assert "http://" in result.stderr
     mock_save.assert_not_called()
 
 
 def test_login_rejects_url_flag(runner: CliRunner) -> None:
     result = runner.invoke(app, ["auth", "login", "--url", "https://x"])
-    assert result.exit_code != 0
+    assert result.exit_code == ExitCode.USAGE_ERROR
     assert "no such option" in result.stderr.lower()
 
 
 def test_login_rejects_username_flag(runner: CliRunner) -> None:
     result = runner.invoke(app, ["auth", "login", "--username", "admin"])
-    assert result.exit_code != 0
+    assert result.exit_code == ExitCode.USAGE_ERROR
     assert "no such option" in result.stderr.lower()
 
 
 def test_login_rejects_password_flag(runner: CliRunner) -> None:
     result = runner.invoke(app, ["auth", "login", "--password", "secret"])
-    assert result.exit_code != 0
+    assert result.exit_code == ExitCode.USAGE_ERROR
     assert "no such option" in result.stderr.lower()
 
 
@@ -106,7 +107,7 @@ def test_logout_falls_back_to_remaining_profile(mock_load: MagicMock, mock_save:
 @patch(f"{MODULE}.load_config", return_value=Config())
 def test_logout_nonexistent_profile_aborts(_mock_load: MagicMock, _mock_save: MagicMock, runner: CliRunner) -> None:
     result = runner.invoke(app, ["auth", "logout", "--profile", "nope"])
-    assert result.exit_code != 0
+    assert result.exit_code == ExitCode.NOT_FOUND
 
 
 # -- use -------------------------------------------------------------------
@@ -127,4 +128,4 @@ def test_use_profile_switches_active(mock_load: MagicMock, mock_save: MagicMock,
 @patch(f"{MODULE}.load_config", return_value=Config())
 def test_use_profile_nonexistent_aborts(_mock_load: MagicMock, _mock_save: MagicMock, runner: CliRunner) -> None:
     result = runner.invoke(app, ["auth", "use", "nonexistent"])
-    assert result.exit_code != 0
+    assert result.exit_code == ExitCode.NOT_FOUND

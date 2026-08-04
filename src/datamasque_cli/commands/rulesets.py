@@ -20,8 +20,9 @@ from datamasque_cli.output import (
     ErrorCode,
     ExitCode,
     abort,
-    abort_if_async_validation,
     abort_if_invalid,
+    abort_if_too_large_for_sync_validation,
+    confirm_or_abort,
     print_error,
     print_info,
     print_success,
@@ -159,7 +160,7 @@ def create_ruleset(
             hint="Pass --type file|database to pick which one to update.",
         )
 
-    yaml_content = file.read_text()
+    yaml_content = file.read_text(encoding="utf-8")
     ruleset = Ruleset(name=name, yaml=yaml_content, ruleset_type=rs_type)
     client.create_or_update_ruleset(ruleset)
     print_success(f"Ruleset '{name}' ({rs_type.value}) created/updated.")
@@ -179,7 +180,7 @@ def delete_ruleset(
     match = _collapse_to_one_or_abort(_find_by_name(client, name, ruleset_type), name)
 
     if not is_confirmed:
-        typer.confirm(f"Delete ruleset '{name}' ({match.ruleset_type.value})?", abort=True)
+        confirm_or_abort(f"Delete ruleset '{name}' ({match.ruleset_type.value})?")
 
     assert match.id is not None  # Populated by list_rulesets
     client.delete_ruleset_by_id_if_exists(match.id)
@@ -204,8 +205,8 @@ def validate_ruleset(
 
     Note that rulesets over 60 KiB validate asynchronously and cannot be validated here.
     """
-    yaml_content = file.read_text()
-    abort_if_async_validation(
+    yaml_content = file.read_text(encoding="utf-8")
+    abort_if_too_large_for_sync_validation(
         yaml_content,
         subject=f"Ruleset '{file.name}'",
         create_command=f"dm rulesets create --name <name> --type {ruleset_type.value} -f {file}",
@@ -276,7 +277,7 @@ def import_bundle(
     pass `--overwrite-*` flags to replace existing entries.
     """
     if not is_confirmed:
-        typer.confirm("This will modify rulesets, libraries, and seed files. Continue?", abort=True)
+        confirm_or_abort("This will modify rulesets, libraries, and seed files. Continue?")
 
     client = get_client(profile)
     # `/api/import/v1/` expects a multipart `zip_archive` upload plus three
@@ -312,7 +313,7 @@ def import_bundle(
 
 
 @app.command("status")
-def ruleset_status(
+def show_ruleset_status(
     name: str = typer.Argument(help="Ruleset name"),
     ruleset_type: RulesetType | None = typer.Option(
         None, "--type", "-t", help="Required when two rulesets share a name"
@@ -357,7 +358,7 @@ def generate_ruleset(
     The request JSON format matches the DataMasque API's /api/generate-ruleset/v2/ endpoint.
     """
     client = get_client(profile)
-    raw_request = json.loads(request_file.read_text())
+    raw_request = json.loads(request_file.read_text(encoding="utf-8"))
 
     try:
         if is_file_ruleset:
@@ -368,7 +369,7 @@ def generate_ruleset(
         abort(f"Invalid generation request in {request_file}: {exc}", code=ErrorCode.INVALID_INPUT)
 
     if output is not None:
-        output.write_text(yaml_content)
+        output.write_text(yaml_content, encoding="utf-8")
         print_success(f"Generated ruleset written to {output}")
     else:
         typer.echo(yaml_content)
