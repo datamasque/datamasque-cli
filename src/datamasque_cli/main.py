@@ -13,6 +13,11 @@ from collections.abc import Sequence
 from importlib.metadata import version as pkg_version
 
 import typer
+from datamasque.client.exceptions import (
+    DataMasqueApiError,
+    DataMasqueException,
+    DataMasqueTransportError,
+)
 from rich.console import Console
 from typer.main import get_command
 
@@ -29,7 +34,14 @@ from datamasque_cli.commands import (
     system,
     users,
 )
-from datamasque_cli.output import print_json, should_emit_json, stdout_console
+from datamasque_cli.output import (
+    ErrorCode,
+    abort,
+    abort_api_error,
+    print_json,
+    should_emit_json,
+    stdout_console,
+)
 from datamasque_cli.protocols import ArgumentEntry, CommandEntry, CompactEntry, Group, OptionEntry
 
 app = typer.Typer(
@@ -126,5 +138,16 @@ def catalog(
         stdout_console.print(f"  [bold]{item['path']:<{width}}[/bold]  [dim]{item['help']}[/dim]")
 
 
+def main() -> None:
+    try:
+        app()
+    except DataMasqueApiError as exc:
+        abort_api_error("Request failed", exc)
+    except DataMasqueTransportError as exc:
+        abort(str(exc), code=ErrorCode.TRANSPORT_ERROR)
+    except DataMasqueException as exc:
+        abort(str(exc), code=ErrorCode.ERROR)
+
+
 if __name__ == "__main__":
-    app()
+    main()
