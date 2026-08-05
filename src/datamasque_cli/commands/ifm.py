@@ -25,11 +25,13 @@ from datamasque.client.models.ifm import (
 from datamasque_cli.client import get_ifm_client
 from datamasque_cli.output import (
     ErrorCode,
+    FileKind,
     abort,
     confirm_or_abort,
     print_error,
     print_json,
     print_success,
+    read_text_or_abort,
     render_output,
 )
 
@@ -125,11 +127,7 @@ def _load_mask_input(data: str) -> list[Any]:
     if data == "-":
         raw = sys.stdin.read()
     else:
-        try:
-            raw = Path(data).read_text(encoding="utf-8")
-        except OSError as exc:
-            code = ErrorCode.NOT_FOUND if isinstance(exc, FileNotFoundError) else ErrorCode.INVALID_INPUT
-            abort(f"Could not read mask input file '{data}': {exc.strerror or exc}", code=code)
+        raw = read_text_or_abort(Path(data), FileKind.MASK_INPUT)
 
     try:
         parsed = json.loads(raw)
@@ -225,7 +223,7 @@ def create_plan(
     client = get_ifm_client(profile)
     request = RulesetPlanCreateRequest(
         name=name,
-        ruleset_yaml=file.read_text(encoding="utf-8"),
+        ruleset_yaml=read_text_or_abort(file, FileKind.RULESET),
         options=_options_from_flags(enabled, log_level),
     )
     try:
@@ -257,7 +255,7 @@ def update_plan(
 
     client = get_ifm_client(profile)
     request = RulesetPlanPartialUpdateRequest(
-        ruleset_yaml=file.read_text(encoding="utf-8") if file is not None else None,
+        ruleset_yaml=read_text_or_abort(file, FileKind.RULESET) if file is not None else None,
         options=_options_from_flags(enabled, log_level),
     )
     try:

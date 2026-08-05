@@ -13,12 +13,14 @@ from datamasque_cli.client import get_client
 from datamasque_cli.output import (
     ErrorCode,
     ExitCode,
+    FileKind,
     abort,
     abort_api_error,
     abort_if_invalid,
     confirm_or_abort,
     print_info,
     print_success,
+    read_text_or_abort,
     render_output,
     should_emit_json,
 )
@@ -87,7 +89,7 @@ def create_library(
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Create or update a ruleset library from a YAML file."""
-    yaml_content = file.read_text(encoding="utf-8")
+    yaml_content = read_text_or_abort(file, FileKind.RULESET_LIBRARY)
     client = get_client(profile)
 
     library = RulesetLibrary(name=name, namespace=namespace, yaml=yaml_content)

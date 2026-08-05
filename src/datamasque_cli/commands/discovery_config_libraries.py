@@ -14,12 +14,14 @@ from datamasque_cli.client import get_client
 from datamasque_cli.output import (
     ErrorCode,
     ExitCode,
+    FileKind,
     abort,
     abort_api_error,
     abort_if_empty,
     confirm_or_abort,
     print_success,
     print_warning,
+    read_text_or_abort,
     render_output,
 )
 
@@ -101,8 +103,8 @@ def create_library(
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Create or update a discovery config library from a YAML file."""
-    yaml_content = file.read_text(encoding="utf-8")
-    abort_if_empty(yaml_content, file)
+    yaml_content = read_text_or_abort(file, FileKind.DISCOVERY_CONFIG_LIBRARY)
+    abort_if_empty(yaml_content, file, FileKind.DISCOVERY_CONFIG_LIBRARY)
 
     client = get_client(profile)
     library = DiscoveryConfigLibrary(name=name, namespace=namespace, yaml=yaml_content)
@@ -154,8 +156,8 @@ def validate_library(
     Creates a temporary library to trigger server-side validation,
     then deletes it. Reports any validation errors.
     """
-    yaml_content = file.read_text(encoding="utf-8")
-    abort_if_empty(yaml_content, file)
+    yaml_content = read_text_or_abort(file, FileKind.DISCOVERY_CONFIG_LIBRARY)
+    abort_if_empty(yaml_content, file, FileKind.DISCOVERY_CONFIG_LIBRARY)
     temp_name = f"__dm_cli_validate_{uuid.uuid4().hex}"
 
     client = get_client(profile)

@@ -1,20 +1,27 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
 from datamasque_cli.output import (
     EXIT_CODE_BY_ERROR,
     ErrorCode,
+    ExitCode,
+    FileKind,
     abort,
     is_agent_context,
     print_json,
     print_success,
     print_table,
+    read_json_object_or_abort,
+    read_text_or_abort,
     redact_sensitive_fields,
     render_output,
     should_emit_json,
+    write_bytes_or_abort,
+    write_text_or_abort,
 )
 
 
@@ -199,3 +206,117 @@ def test_print_success_suppressed_in_agent_mode(
     captured = capsys.readouterr()
     assert captured.err == ""
     assert captured.out == ""
+
+
+# -- file helpers ----------------------------------------------------------
+
+
+def test_read_text_returns_utf8_content(tmp_path: Path) -> None:
+    file = tmp_path / "rules.yaml"
+    file.write_text("name: café\n", encoding="utf-8")
+
+    assert read_text_or_abort(file, FileKind.RULESET) == "name: café\n"
+
+
+def test_read_text_rejects_other_encodings(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    file = tmp_path / "latin1.yaml"
+    file.write_bytes("name: café\n".encode("latin-1"))
+
+    with pytest.raises(SystemExit) as exc_info:
+        read_text_or_abort(file, FileKind.RULESET)
+
+    assert exc_info.value.code == ExitCode.INVALID_INPUT
+    assert "not valid UTF-8" in capsys.readouterr().err
+
+
+def test_read_text_missing_file_is_not_found(tmp_path: Path) -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        read_text_or_abort(tmp_path / "absent.yaml", FileKind.MASK_INPUT)
+
+    assert exc_info.value.code == ExitCode.NOT_FOUND
+
+
+def test_read_text_directory_is_invalid_input(tmp_path: Path) -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        read_text_or_abort(tmp_path, FileKind.RULESET)
+
+    assert exc_info.value.code == ExitCode.INVALID_INPUT
+
+
+@pytest.mark.parametrize(
+    ("kind", "expected"),
+    [
+        (FileKind.RULESET, "ruleset file"),
+        (FileKind.DISCOVERY_CONFIG_LIBRARY, "discovery config library file"),
+        (FileKind.MASK_INPUT, "mask input file"),
+    ],
+)
+def test_read_errors_name_the_kind_of_file(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], kind: FileKind, expected: str
+) -> None:
+    """Every file error says which argument it came from, not just a bare path."""
+    file = tmp_path / "absent.yaml"
+
+    with pytest.raises(SystemExit):
+        read_text_or_abort(file, kind)
+
+    stderr = " ".join(capsys.readouterr().err.split())
+    assert f"{expected} {file}" in stderr
+
+
+def test_read_json_object_parses_content(tmp_path: Path) -> None:
+    file = tmp_path / "request.json"
+    file.write_text('{"connection": "abc"}', encoding="utf-8")
+
+    assert read_json_object_or_abort(file, FileKind.CONNECTION) == {"connection": "abc"}
+
+
+def test_read_json_object_rejects_malformed_content(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    file = tmp_path / "broken.json"
+    file.write_text('{"connection": ', encoding="utf-8")
+
+    with pytest.raises(SystemExit) as exc_info:
+        read_json_object_or_abort(file, FileKind.CONNECTION)
+
+    assert exc_info.value.code == ExitCode.INVALID_INPUT
+    assert "not valid JSON" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("content", ['["a", "b"]', '"just a string"', "42", "null"])
+def test_read_json_object_rejects_non_objects(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], content: str
+) -> None:
+    """Valid JSON that is not an object would crash the callers, which index into it."""
+    file = tmp_path / "array.json"
+    file.write_text(content, encoding="utf-8")
+
+    with pytest.raises(SystemExit) as exc_info:
+        read_json_object_or_abort(file, FileKind.CONNECTION)
+
+    assert exc_info.value.code == ExitCode.INVALID_INPUT
+    assert "must contain a JSON object" in capsys.readouterr().err
+
+
+def test_write_text_round_trips_utf8(tmp_path: Path) -> None:
+    file = tmp_path / "out.yaml"
+
+    write_text_or_abort(file, "name: café\n")
+
+    assert file.read_bytes() == "name: café\n".encode("utf-8")
+
+
+def test_write_text_to_missing_directory_aborts(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    target = tmp_path / "no_such_dir" / "out.yaml"
+
+    with pytest.raises(SystemExit) as exc_info:
+        write_text_or_abort(target, "content")
+
+    assert exc_info.value.code == ExitCode.INVALID_INPUT
+    assert str(target) in " ".join(capsys.readouterr().err.split())
+
+
+def test_write_bytes_to_a_directory_aborts(tmp_path: Path) -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        write_bytes_or_abort(tmp_path, b"PK\x03\x04")
+
+    assert exc_info.value.code == ExitCode.INVALID_INPUT

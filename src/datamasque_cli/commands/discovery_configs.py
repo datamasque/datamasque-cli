@@ -15,6 +15,7 @@ from datamasque_cli.client import get_client
 from datamasque_cli.output import (
     ErrorCode,
     ExitCode,
+    FileKind,
     abort,
     abort_api_error,
     abort_if_empty,
@@ -24,7 +25,9 @@ from datamasque_cli.output import (
     print_info,
     print_success,
     print_warning,
+    read_text_or_abort,
     render_output,
+    write_text_or_abort,
 )
 
 app = typer.Typer(help="Manage discovery configs (configurable discovery).", no_args_is_help=True)
@@ -131,7 +134,7 @@ def get_default_config(
     yaml_content = response.content.decode("utf-8")
 
     if output is not None:
-        output.write_text(yaml_content, encoding="utf-8")
+        write_text_or_abort(output, yaml_content)
         print_success(f"Default {config_type.value} discovery config written to {output}")
         return
 
@@ -180,8 +183,8 @@ def create_config(
             hint="Pass --type file|database to pick which one to update.",
         )
 
-    yaml_content = file.read_text(encoding="utf-8")
-    abort_if_empty(yaml_content, file)
+    yaml_content = read_text_or_abort(file, FileKind.DISCOVERY_CONFIG)
+    abort_if_empty(yaml_content, file, FileKind.DISCOVERY_CONFIG)
 
     config = DiscoveryConfig(name=name, yaml=yaml_content, config_type=resolved_type)
     client.create_or_update_discovery_config(config)
@@ -222,11 +225,12 @@ def validate_config(
 
     Note that configs over 60 KiB validate asynchronously and cannot be validated here.
     """
-    yaml_content = file.read_text(encoding="utf-8")
-    abort_if_empty(yaml_content, file)
+    yaml_content = read_text_or_abort(file, FileKind.DISCOVERY_CONFIG)
+    abort_if_empty(yaml_content, file, FileKind.DISCOVERY_CONFIG)
     abort_if_too_large_for_sync_validation(
         yaml_content,
-        subject=f'Discovery config "{file.name}"',
+        file,
+        FileKind.DISCOVERY_CONFIG,
         create_command=f"dm discover configs create --name <name> --type {config_type.value} -f {file}",
         status_command="dm discover configs status <name>",
     )

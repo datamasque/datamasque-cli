@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from enum import StrEnum
 from pathlib import Path
 
@@ -25,10 +24,12 @@ from datamasque.client.models.connection import (
 from datamasque_cli.client import get_client
 from datamasque_cli.output import (
     ErrorCode,
+    FileKind,
     abort,
     abort_api_error,
     confirm_or_abort,
     print_success,
+    read_json_object_or_abort,
     redact_sensitive_fields,
     render_output,
 )
@@ -214,8 +215,11 @@ def create_connection(
 
 def _create_from_file(client: DataMasqueClient, file: Path) -> None:
     """Create a connection from a JSON file."""
-    data = json.loads(file.read_text(encoding="utf-8"))
-    conn_type = _parse_connection_type(data.pop("type", "database"))
+    data = read_json_object_or_abort(file, FileKind.CONNECTION)
+    raw_type = data.pop("type", "database")
+    if not isinstance(raw_type, str):
+        abort(f'{file}: "type" must be a string.', code=ErrorCode.INVALID_INPUT)
+    conn_type = _parse_connection_type(raw_type)
 
     # Convert db_type string to enum for database connections.
     if conn_type is ConnectionType.DATABASE and "database_type" in data:

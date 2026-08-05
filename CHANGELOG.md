@@ -24,14 +24,15 @@
 - Safe Data Preview: `dm discover schema-results` and `dm discover file-report`
   include `safe_data_preview` in their `--json` output.
 
-### Fixed
-
-- `dm rulesets generate`, `dm connections update --password`, and the
-  deprecated `dm system import` no longer fail.
-
 ### Changed
 - A declined confirmation prompt now exits 10 (`cancelled`) instead of 1,
   so a decision is not reported as a failure. Ctrl-C still exits 1.
+
+### Fixed
+- `dm rulesets generate`, `dm connections update --password`, and the
+  deprecated `dm system import` no longer fail.
+- File errors now name the file instead of printing a traceback.
+- Unhandled server and network errors now abort with a code, not a traceback.
 
 ## v1.4.0
 

@@ -27,6 +27,7 @@ from datamasque_cli.output import (
     should_emit_json,
     stdout_console,
     style_status,
+    write_text_or_abort,
 )
 
 app = typer.Typer(help="Manage masking runs.", no_args_is_help=True)
@@ -364,7 +365,7 @@ def run_report(
     if output is None:
         typer.echo(report)
     else:
-        output.write_text(report, encoding="utf-8")
+        write_text_or_abort(output, report)
         print_success(f"Run report written to {output}")
 
 

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import uuid
 from pathlib import Path
 
@@ -19,6 +18,7 @@ from datamasque_cli.client import get_client
 from datamasque_cli.output import (
     ErrorCode,
     ExitCode,
+    FileKind,
     abort,
     abort_if_invalid,
     abort_if_too_large_for_sync_validation,
@@ -27,8 +27,12 @@ from datamasque_cli.output import (
     print_info,
     print_success,
     print_warning,
+    read_json_object_or_abort,
+    read_text_or_abort,
     render_output,
     should_emit_json,
+    write_bytes_or_abort,
+    write_text_or_abort,
 )
 
 app = typer.Typer(help="Manage masking rulesets.", no_args_is_help=True)
@@ -160,7 +164,7 @@ def create_ruleset(
             hint="Pass --type file|database to pick which one to update.",
         )
 
-    yaml_content = file.read_text(encoding="utf-8")
+    yaml_content = read_text_or_abort(file, FileKind.RULESET)
     ruleset = Ruleset(name=name, yaml=yaml_content, ruleset_type=rs_type)
     client.create_or_update_ruleset(ruleset)
     print_success(f"Ruleset '{name}' ({rs_type.value}) created/updated.")
@@ -205,10 +209,11 @@ def validate_ruleset(
 
     Note that rulesets over 60 KiB validate asynchronously and cannot be validated here.
     """
-    yaml_content = file.read_text(encoding="utf-8")
+    yaml_content = read_text_or_abort(file, FileKind.RULESET)
     abort_if_too_large_for_sync_validation(
         yaml_content,
-        subject=f"Ruleset '{file.name}'",
+        file,
+        FileKind.RULESET,
         create_command=f"dm rulesets create --name <name> --type {ruleset_type.value} -f {file}",
         status_command="dm rulesets status <name>",
     )
@@ -251,7 +256,7 @@ def export_bundle(
     client = get_client(profile)
     # `export_configuration` is not yet wrapped in datamasque-python; hit the endpoint directly.
     response = client.make_request("GET", "/api/export/v1/")
-    output_path.write_bytes(response.content)
+    write_bytes_or_abort(output_path, response.content)
     print_success(f"Bundle exported to {output_path}")
 
 
@@ -358,7 +363,7 @@ def generate_ruleset(
     The request JSON format matches the DataMasque API's /api/generate-ruleset/v2/ endpoint.
     """
     client = get_client(profile)
-    raw_request = json.loads(request_file.read_text(encoding="utf-8"))
+    raw_request = read_json_object_or_abort(request_file, FileKind.GENERATION_REQUEST)
 
     try:
         if is_file_ruleset:
@@ -369,7 +374,7 @@ def generate_ruleset(
         abort(f"Invalid generation request in {request_file}: {exc}", code=ErrorCode.INVALID_INPUT)
 
     if output is not None:
-        output.write_text(yaml_content, encoding="utf-8")
+        write_text_or_abort(output, yaml_content)
         print_success(f"Generated ruleset written to {output}")
     else:
         typer.echo(yaml_content)

@@ -28,6 +28,8 @@ from datamasque_cli.output import (
     print_success,
     render_output,
     should_emit_json,
+    write_bytes_or_abort,
+    write_text_or_abort,
 )
 
 app = typer.Typer(help="Data discovery operations.", no_args_is_help=True)
@@ -59,7 +61,7 @@ def _write_or_echo(content: str, output: Path | None, success_label: str) -> Non
     if output is None:
         typer.echo(content)
         return
-    output.write_text(content, encoding="utf-8")
+    write_text_or_abort(output, content)
     print_success(f"{success_label} written to {output}")
 
 
@@ -261,7 +263,7 @@ def db_discovery_report(
                 hint=f"Re-run with -o <path>.zip (e.g. -o discovery_report_{run_id}.zip).",
             )
         target = output if output.suffix.lower() == ".zip" else output.parent / (output.name + ".zip")
-        target.write_bytes(report)
+        write_bytes_or_abort(target, report)
         print_success(f"Database discovery report (split, zip) written to {target}")
         return
 
@@ -285,7 +287,7 @@ def file_discovery_report(
     serialised_report = [result.model_dump(mode="json") for result in report]
 
     if output is not None:
-        output.write_text(json.dumps(serialised_report, indent=2, default=str), encoding="utf-8")
+        write_text_or_abort(output, json.dumps(serialised_report, indent=2, default=str))
         print_success(f"File discovery report written to {output}")
         return
 
