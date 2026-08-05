@@ -20,17 +20,9 @@ from datamasque.client.models.discovery_config import DiscoveryConfigId, Discove
 
 from datamasque_cli.client import get_client
 from datamasque_cli.commands import discovery_config_libraries, discovery_configs
-from datamasque_cli.output import (
-    ErrorCode,
-    abort,
-    abort_api_error,
-    print_json,
-    print_success,
-    render_output,
-    should_emit_json,
-    write_bytes_or_abort,
-    write_text_or_abort,
-)
+from datamasque_cli.errors import ErrorCode, abort, abort_api_error
+from datamasque_cli.fileio import write_bytes_or_abort, write_text_or_abort
+from datamasque_cli.output import print_json, print_success, render_output, should_emit_json
 
 app = typer.Typer(help="Data discovery operations.", no_args_is_help=True)
 app.add_typer(discovery_configs.app, name="configs")

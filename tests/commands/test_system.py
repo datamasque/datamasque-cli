@@ -8,8 +8,8 @@ from datamasque.client.exceptions import DataMasqueApiError
 from datamasque.client.models.license import LicenseInfo, SwitchableLicenseMetadata
 from typer.testing import CliRunner
 
+from datamasque_cli.errors import ExitCode
 from datamasque_cli.main import app
-from datamasque_cli.output import ExitCode
 
 MODULE = "datamasque_cli.commands.system"
 

@@ -12,23 +12,14 @@ from datamasque.client.models.discovery_config import DiscoveryConfig, Discovery
 from datamasque.client.models.status import ValidationErrorDetails, ValidationStatus
 
 from datamasque_cli.client import get_client
-from datamasque_cli.output import (
-    ErrorCode,
-    ExitCode,
+from datamasque_cli.errors import ErrorCode, ExitCode, abort, abort_api_error, abort_if_invalid, confirm_or_abort
+from datamasque_cli.fileio import (
     FileKind,
-    abort,
-    abort_api_error,
-    abort_if_empty,
-    abort_if_invalid,
     abort_if_too_large_for_sync_validation,
-    confirm_or_abort,
-    print_info,
-    print_success,
-    print_warning,
     read_text_or_abort,
-    render_output,
     write_text_or_abort,
 )
+from datamasque_cli.output import print_info, print_success, print_warning, render_output
 
 app = typer.Typer(help="Manage discovery configs (configurable discovery).", no_args_is_help=True)
 
@@ -184,7 +175,6 @@ def create_config(
         )
 
     yaml_content = read_text_or_abort(file, FileKind.DISCOVERY_CONFIG)
-    abort_if_empty(yaml_content, file, FileKind.DISCOVERY_CONFIG)
 
     config = DiscoveryConfig(name=name, yaml=yaml_content, config_type=resolved_type)
     client.create_or_update_discovery_config(config)
@@ -226,7 +216,6 @@ def validate_config(
     Note that configs over 60 KiB validate asynchronously and cannot be validated here.
     """
     yaml_content = read_text_or_abort(file, FileKind.DISCOVERY_CONFIG)
-    abort_if_empty(yaml_content, file, FileKind.DISCOVERY_CONFIG)
     abort_if_too_large_for_sync_validation(
         yaml_content,
         file,

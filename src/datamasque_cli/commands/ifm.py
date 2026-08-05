@@ -11,7 +11,7 @@ import json
 import sys
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, NoReturn
+from typing import Any
 
 import typer
 from datamasque.client.exceptions import DataMasqueApiError
@@ -23,17 +23,9 @@ from datamasque.client.models.ifm import (
 )
 
 from datamasque_cli.client import get_ifm_client
-from datamasque_cli.output import (
-    ErrorCode,
-    FileKind,
-    abort,
-    confirm_or_abort,
-    print_error,
-    print_json,
-    print_success,
-    read_text_or_abort,
-    render_output,
-)
+from datamasque_cli.errors import ErrorCode, abort, abort_api_error, confirm_or_abort
+from datamasque_cli.fileio import FileKind, read_text_or_abort
+from datamasque_cli.output import print_error, print_json, print_success, render_output
 
 app = typer.Typer(help="Manage in-flight-masking (IFM) ruleset plans and execute masks.", no_args_is_help=True)
 
@@ -47,63 +39,6 @@ _STATUS_TO_ERROR_CODE: dict[int, ErrorCode] = {
     409: ErrorCode.CONFLICT,
     422: ErrorCode.INVALID_INPUT,
 }
-
-
-def _format_pydantic_errors(errors: list[Any]) -> str:
-    """Flatten FastAPI's `detail` list (Pydantic `e.errors()`) into a readable string.
-
-    Each entry looks like `{"loc": [...], "msg": "...", "type": "..."}`;
-    we render `field.path: message` per entry, joined with `; `.
-    Entries that don't match the shape fall back to `str(entry)`.
-    """
-    parts: list[str] = []
-    for entry in errors:
-        if isinstance(entry, dict) and "msg" in entry:
-            loc = entry.get("loc") or []
-            location = ".".join(str(part) for part in loc if part != "body") if isinstance(loc, (list, tuple)) else ""
-            parts.append(f"{location}: {entry['msg']}" if location else str(entry["msg"]))
-        else:
-            parts.append(str(entry))
-    return "; ".join(parts)
-
-
-def _server_error_detail(exc: DataMasqueApiError) -> str | None:
-    """Pull a human-readable error string from the IFM response body, if present.
-
-    The IFM service returns `{"error": "..."}`;
-    FastAPI validation errors come back as `{"detail": ...}`,
-    where `detail` is either a string or a list of Pydantic error dicts (422s).
-    Falls through to `None` if the body is missing or not parseable.
-    """
-    try:
-        body = exc.response.json()
-    except (ValueError, AttributeError):
-        return None
-    if isinstance(body, dict):
-        error = body.get("error")
-        if isinstance(error, str):
-            return error
-        if "detail" in body:
-            detail = body["detail"]
-            if isinstance(detail, str):
-                return detail
-            if isinstance(detail, list):
-                return _format_pydantic_errors(detail)
-            return str(detail)
-    return None
-
-
-def _abort_api_error(prefix: str, exc: DataMasqueApiError) -> NoReturn:
-    """Map an `DataMasqueApiError` to the right `ErrorCode` and surface the body.
-
-    The default `str(exc)` only includes the HTTP status,
-    so the actual server message is hidden without this.
-    """
-    status_code = getattr(exc.response, "status_code", None)
-    code = _STATUS_TO_ERROR_CODE.get(status_code, ErrorCode.ERROR) if isinstance(status_code, int) else ErrorCode.ERROR
-    detail = _server_error_detail(exc)
-    message = f"{prefix}: {detail}" if detail else f"{prefix}: {exc}"
-    abort(message, code=code)
 
 
 class LogLevel(StrEnum):
@@ -149,7 +84,7 @@ def list_plans(
     try:
         plans = client.list_ruleset_plans()
     except DataMasqueApiError as exc:
-        _abort_api_error("Failed to list IFM ruleset plans", exc)
+        abort_api_error("Failed to list IFM ruleset plans", exc, status_codes=_STATUS_TO_ERROR_CODE)
 
     data = [
         {
@@ -182,7 +117,7 @@ def get_plan(
     try:
         plan = client.get_ruleset_plan(name)
     except DataMasqueApiError as exc:
-        _abort_api_error(f"Failed to get IFM ruleset plan '{name}'", exc)
+        abort_api_error(f"Failed to get IFM ruleset plan '{name}'", exc, status_codes=_STATUS_TO_ERROR_CODE)
 
     if is_yaml:
         if plan.ruleset_yaml is None:
@@ -229,7 +164,7 @@ def create_plan(
     try:
         created = client.create_ruleset_plan(request)
     except DataMasqueApiError as exc:
-        _abort_api_error("Failed to create IFM ruleset plan", exc)
+        abort_api_error("Failed to create IFM ruleset plan", exc, status_codes=_STATUS_TO_ERROR_CODE)
 
     print_success(f"IFM ruleset plan '{created.name}' created (serial {created.serial}).")
     if created.url:
@@ -261,7 +196,7 @@ def update_plan(
     try:
         updated = client.patch_ruleset_plan(name, request)
     except DataMasqueApiError as exc:
-        _abort_api_error(f"Failed to update IFM ruleset plan '{name}'", exc)
+        abort_api_error(f"Failed to update IFM ruleset plan '{name}'", exc, status_codes=_STATUS_TO_ERROR_CODE)
 
     print_success(f"IFM ruleset plan '{name}' updated (serial {updated.serial}).")
 
@@ -280,7 +215,7 @@ def delete_plan(
     try:
         client.delete_ruleset_plan(name)
     except DataMasqueApiError as exc:
-        _abort_api_error(f"Failed to delete IFM ruleset plan '{name}'", exc)
+        abort_api_error(f"Failed to delete IFM ruleset plan '{name}'", exc, status_codes=_STATUS_TO_ERROR_CODE)
 
     print_success(f"IFM ruleset plan '{name}' deleted.")
 
@@ -323,7 +258,7 @@ def mask(
     try:
         result = client.mask(name, request)
     except DataMasqueApiError as exc:
-        _abort_api_error("Mask request failed", exc)
+        abort_api_error("Mask request failed", exc, status_codes=_STATUS_TO_ERROR_CODE)
 
     if not result.success:
         print_error("Mask failed.")
@@ -348,7 +283,7 @@ def verify_token(
     try:
         info = client.verify_token()
     except DataMasqueApiError as exc:
-        _abort_api_error("Failed to verify IFM token", exc)
+        abort_api_error("Failed to verify IFM token", exc, status_codes=_STATUS_TO_ERROR_CODE)
     if is_json:
         print_json({"scopes": info.scopes})
         return

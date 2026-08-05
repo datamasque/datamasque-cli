@@ -8,7 +8,8 @@ import typer
 from datamasque.client.models.files import SeedFile
 
 from datamasque_cli.client import get_client
-from datamasque_cli.output import ErrorCode, abort, confirm_or_abort, print_success, render_output
+from datamasque_cli.errors import ErrorCode, abort, confirm_or_abort
+from datamasque_cli.output import print_success, render_output
 
 app = typer.Typer(help="Manage seed files.", no_args_is_help=True)
 

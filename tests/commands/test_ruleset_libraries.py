@@ -9,8 +9,8 @@ from datamasque.client.exceptions import DataMasqueApiError
 from datamasque.client.models.status import ValidationErrorDetails, ValidationStatus
 from typer.testing import CliRunner
 
+from datamasque_cli.errors import ExitCode
 from datamasque_cli.main import app
-from datamasque_cli.output import ExitCode
 
 MODULE = "datamasque_cli.commands.ruleset_libraries"
 

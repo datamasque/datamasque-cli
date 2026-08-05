@@ -5,23 +5,22 @@ from pathlib import Path
 
 import pytest
 
-from datamasque_cli.output import (
-    EXIT_CODE_BY_ERROR,
-    ErrorCode,
-    ExitCode,
+from datamasque_cli.errors import EXIT_CODE_BY_ERROR, ErrorCode, ExitCode, abort
+from datamasque_cli.fileio import (
     FileKind,
-    abort,
+    read_json_object_or_abort,
+    read_text_or_abort,
+    write_bytes_or_abort,
+    write_text_or_abort,
+)
+from datamasque_cli.output import (
     is_agent_context,
     print_json,
     print_success,
     print_table,
-    read_json_object_or_abort,
-    read_text_or_abort,
     redact_sensitive_fields,
     render_output,
     should_emit_json,
-    write_bytes_or_abort,
-    write_text_or_abort,
 )
 
 
@@ -211,6 +210,16 @@ def test_print_success_suppressed_in_agent_mode(
 # -- file helpers ----------------------------------------------------------
 
 
+def _unwrapped(text: str) -> str:
+    """Rejoin a message Rich broke across lines to fit the terminal."""
+    return " ".join(text.split())
+
+
+def _without_whitespace(text: str) -> str:
+    """Drop every space, for paths Rich may have split mid-token."""
+    return "".join(text.split())
+
+
 def test_read_text_returns_utf8_content(tmp_path: Path) -> None:
     file = tmp_path / "rules.yaml"
     file.write_text("name: café\n", encoding="utf-8")
@@ -226,7 +235,19 @@ def test_read_text_rejects_other_encodings(tmp_path: Path, capsys: pytest.Captur
         read_text_or_abort(file, FileKind.RULESET)
 
     assert exc_info.value.code == ExitCode.INVALID_INPUT
-    assert "not valid UTF-8" in capsys.readouterr().err
+    assert "is not valid UTF-8" in _unwrapped(capsys.readouterr().err)
+
+
+@pytest.mark.parametrize("content", ["", "\n", "   \n\t\n"])
+def test_read_text_rejects_empty_content(tmp_path: Path, capsys: pytest.CaptureFixture[str], content: str) -> None:
+    file = tmp_path / "empty.yaml"
+    file.write_text(content, encoding="utf-8")
+
+    with pytest.raises(SystemExit) as exc_info:
+        read_text_or_abort(file, FileKind.RULESET)
+
+    assert exc_info.value.code == ExitCode.INVALID_INPUT
+    assert "is empty" in _unwrapped(capsys.readouterr().err)
 
 
 def test_read_text_missing_file_is_not_found(tmp_path: Path) -> None:
@@ -260,8 +281,7 @@ def test_read_errors_name_the_kind_of_file(
     with pytest.raises(SystemExit):
         read_text_or_abort(file, kind)
 
-    stderr = " ".join(capsys.readouterr().err.split())
-    assert f"{expected} {file}" in stderr
+    assert _without_whitespace(f"{expected} {file}") in _without_whitespace(capsys.readouterr().err)
 
 
 def test_read_json_object_parses_content(tmp_path: Path) -> None:
@@ -279,13 +299,11 @@ def test_read_json_object_rejects_malformed_content(tmp_path: Path, capsys: pyte
         read_json_object_or_abort(file, FileKind.CONNECTION)
 
     assert exc_info.value.code == ExitCode.INVALID_INPUT
-    assert "not valid JSON" in capsys.readouterr().err
+    assert "is not valid JSON" in _unwrapped(capsys.readouterr().err)
 
 
 @pytest.mark.parametrize("content", ['["a", "b"]', '"just a string"', "42", "null"])
-def test_read_json_object_rejects_non_objects(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str], content: str
-) -> None:
+def test_read_json_object_rejects_non_objects(tmp_path: Path, capsys: pytest.CaptureFixture[str], content: str) -> None:
     """Valid JSON that is not an object would crash the callers, which index into it."""
     file = tmp_path / "array.json"
     file.write_text(content, encoding="utf-8")
@@ -294,7 +312,7 @@ def test_read_json_object_rejects_non_objects(
         read_json_object_or_abort(file, FileKind.CONNECTION)
 
     assert exc_info.value.code == ExitCode.INVALID_INPUT
-    assert "must contain a JSON object" in capsys.readouterr().err
+    assert "must contain a JSON object" in _unwrapped(capsys.readouterr().err)
 
 
 def test_write_text_round_trips_utf8(tmp_path: Path) -> None:
@@ -302,7 +320,7 @@ def test_write_text_round_trips_utf8(tmp_path: Path) -> None:
 
     write_text_or_abort(file, "name: café\n")
 
-    assert file.read_bytes() == "name: café\n".encode("utf-8")
+    assert file.read_bytes() == "name: café\n".encode()
 
 
 def test_write_text_to_missing_directory_aborts(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -312,7 +330,7 @@ def test_write_text_to_missing_directory_aborts(tmp_path: Path, capsys: pytest.C
         write_text_or_abort(target, "content")
 
     assert exc_info.value.code == ExitCode.INVALID_INPUT
-    assert str(target) in " ".join(capsys.readouterr().err.split())
+    assert _without_whitespace(str(target)) in _without_whitespace(capsys.readouterr().err)
 
 
 def test_write_bytes_to_a_directory_aborts(tmp_path: Path) -> None:

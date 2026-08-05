@@ -15,10 +15,9 @@ from datamasque.client.models.connection import ConnectionConfig
 from datamasque.client.models.runs import MaskingRunOptions, MaskingRunRequest, RunInfo
 
 from datamasque_cli.client import get_client
+from datamasque_cli.errors import ErrorCode, abort, abort_api_error
+from datamasque_cli.fileio import write_text_or_abort
 from datamasque_cli.output import (
-    ErrorCode,
-    abort,
-    abort_api_error,
     console,
     print_error,
     print_json,
@@ -27,7 +26,6 @@ from datamasque_cli.output import (
     should_emit_json,
     stdout_console,
     style_status,
-    write_text_or_abort,
 )
 
 app = typer.Typer(help="Manage masking runs.", no_args_is_help=True)

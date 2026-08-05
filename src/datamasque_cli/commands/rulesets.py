@@ -15,25 +15,16 @@ from datamasque.client.models.status import ValidationStatus
 from pydantic import ValidationError
 
 from datamasque_cli.client import get_client
-from datamasque_cli.output import (
-    ErrorCode,
-    ExitCode,
+from datamasque_cli.errors import ErrorCode, ExitCode, abort, abort_if_invalid, confirm_or_abort
+from datamasque_cli.fileio import (
     FileKind,
-    abort,
-    abort_if_invalid,
     abort_if_too_large_for_sync_validation,
-    confirm_or_abort,
-    print_error,
-    print_info,
-    print_success,
-    print_warning,
     read_json_object_or_abort,
     read_text_or_abort,
-    render_output,
-    should_emit_json,
     write_bytes_or_abort,
     write_text_or_abort,
 )
+from datamasque_cli.output import print_error, print_info, print_success, print_warning, render_output, should_emit_json
 
 app = typer.Typer(help="Manage masking rulesets.", no_args_is_help=True)
 

@@ -34,14 +34,8 @@ from datamasque_cli.commands import (
     system,
     users,
 )
-from datamasque_cli.output import (
-    ErrorCode,
-    abort,
-    abort_api_error,
-    print_json,
-    should_emit_json,
-    stdout_console,
-)
+from datamasque_cli.errors import ErrorCode, abort, abort_api_error
+from datamasque_cli.output import print_json, should_emit_json, stdout_console
 from datamasque_cli.protocols import ArgumentEntry, CommandEntry, CompactEntry, Group, OptionEntry
 
 app = typer.Typer(

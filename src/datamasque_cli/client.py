@@ -14,7 +14,7 @@ from datamasque.client.models.dm_instance import DataMasqueInstanceConfig
 from datamasque.client.models.ifm import DataMasqueIfmInstanceConfig
 
 from datamasque_cli.config import Config, Profile, load_config
-from datamasque_cli.output import ErrorCode, abort
+from datamasque_cli.errors import ErrorCode, abort
 
 ENV_URL = "DATAMASQUE_URL"
 ENV_USERNAME = "DATAMASQUE_USERNAME"

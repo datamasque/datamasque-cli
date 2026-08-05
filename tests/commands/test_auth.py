@@ -5,8 +5,8 @@ from unittest.mock import MagicMock, patch
 from typer.testing import CliRunner
 
 from datamasque_cli.config import Config, Profile
+from datamasque_cli.errors import ExitCode
 from datamasque_cli.main import app
-from datamasque_cli.output import ExitCode
 from tests.conftest import make_config
 
 MODULE = "datamasque_cli.commands.auth"

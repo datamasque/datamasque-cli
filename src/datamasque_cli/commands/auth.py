@@ -6,7 +6,8 @@ import typer
 
 from datamasque_cli.client import get_client, profile_from_env
 from datamasque_cli.config import DEFAULT_PROFILE, Profile, load_config, save_config
-from datamasque_cli.output import ErrorCode, abort, print_info, print_success, print_table
+from datamasque_cli.errors import ErrorCode, abort
+from datamasque_cli.output import print_info, print_success, print_table
 
 # `login` and `status` handle connection errors locally
 # because they need softer behaviour than `get_client`'s hard abort:

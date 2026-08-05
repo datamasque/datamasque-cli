@@ -22,17 +22,9 @@ from datamasque.client.models.connection import (
 )
 
 from datamasque_cli.client import get_client
-from datamasque_cli.output import (
-    ErrorCode,
-    FileKind,
-    abort,
-    abort_api_error,
-    confirm_or_abort,
-    print_success,
-    read_json_object_or_abort,
-    redact_sensitive_fields,
-    render_output,
-)
+from datamasque_cli.errors import ErrorCode, abort, abort_api_error, confirm_or_abort
+from datamasque_cli.fileio import FileKind, read_json_object_or_abort
+from datamasque_cli.output import print_success, redact_sensitive_fields, render_output
 
 
 class ConnectionType(StrEnum):

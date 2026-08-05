@@ -23,8 +23,8 @@ from datamasque_cli.commands.runs import (
     _resolve_connection_id,
     _resolve_ruleset_id,
 )
+from datamasque_cli.errors import ExitCode
 from datamasque_cli.main import app
-from datamasque_cli.output import ExitCode
 
 MODULE = "datamasque_cli.commands.runs"
 

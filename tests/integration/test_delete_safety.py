@@ -5,8 +5,8 @@ import uuid
 import pytest
 from typer.testing import CliRunner
 
+from datamasque_cli.errors import ExitCode
 from datamasque_cli.main import app
-from datamasque_cli.output import ExitCode
 
 pytestmark = pytest.mark.integration
 
