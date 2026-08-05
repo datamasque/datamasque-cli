@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -83,3 +84,56 @@ def test_delete_with_type_leaves_other_namespace_intact(
     assert file_gone.exit_code == ExitCode.NOT_FOUND
     assert db_still.exit_code == 0
     assert "mask_table" in db_still.stdout
+
+
+# --- status ------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("is_valid_yaml", "expected_status", "expected_exit"),
+    [
+        (True, "valid", ExitCode.OK),
+        (False, "invalid", ExitCode.INVALID_INPUT),
+    ],
+    ids=["valid", "invalid"],
+)
+def test_ruleset_status(
+    runner: CliRunner,
+    ruleset_name: str,
+    db_yaml: Path,
+    invalid_ruleset_yaml: Path,
+    is_valid_yaml: bool,
+    expected_status: str,
+    expected_exit: ExitCode,
+) -> None:
+    source = db_yaml if is_valid_yaml else invalid_ruleset_yaml
+    create = runner.invoke(
+        app, ["rulesets", "create", "--name", ruleset_name, "--file", str(source), "--type", "database"]
+    )
+    assert create.exit_code == 0, create.stdout
+
+    result = runner.invoke(app, ["rulesets", "status", ruleset_name, "--type", "database", "--json"])
+
+    assert result.exit_code == expected_exit
+    body = json.loads(result.stdout)
+    assert body["status"] == expected_status
+    if not is_valid_yaml:
+        assert body["errors"]
+
+
+def test_ruleset_library_status_reports_invalid(
+    runner: CliRunner,
+    ruleset_library_name: str,
+    invalid_ruleset_yaml: Path,
+) -> None:
+    create = runner.invoke(
+        app, ["libraries", "create", "--name", ruleset_library_name, "--file", str(invalid_ruleset_yaml)]
+    )
+    assert create.exit_code == 0, create.stdout
+
+    result = runner.invoke(app, ["libraries", "status", ruleset_library_name, "--json"])
+
+    assert result.exit_code == ExitCode.INVALID_INPUT
+    body = json.loads(result.stdout)
+    assert body["status"] == "invalid"
+    assert body["errors"]

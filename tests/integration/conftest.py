@@ -245,6 +245,21 @@ def invalid_discovery_yaml(tmp_path: Path) -> Path:
 
 
 @pytest.fixture()
+def invalid_ruleset_yaml(tmp_path: Path) -> Path:
+    """YAML the ruleset parser rejects."""
+    path = tmp_path / "invalid_ruleset.yaml"
+    path.write_text("version: '1.0'\ntasks:\n  - type: not_a_real_task\n")
+    return path
+
+
+@pytest.fixture()
+def ruleset_library_name(runner: CliRunner) -> Iterator[str]:
+    name = f"dm_int_{uuid.uuid4().hex[:8]}"
+    yield name
+    runner.invoke(app, ["libraries", "delete", name, "--yes", "--force"])
+
+
+@pytest.fixture()
 def any_connection(runner: CliRunner) -> str:
     """Name of any connection on the instance."""
     result = runner.invoke(app, ["connections", "list", "--json"])

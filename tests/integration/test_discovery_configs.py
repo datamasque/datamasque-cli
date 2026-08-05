@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -135,3 +136,63 @@ def test_library_namespace_is_isolated(
 def test_library_validate_rejects_invalid_yaml(runner: CliRunner, invalid_discovery_yaml: Path) -> None:
     result = runner.invoke(app, ["discover", "libraries", "validate", "-f", str(invalid_discovery_yaml)])
     assert result.exit_code == ExitCode.INVALID_INPUT
+
+
+# --- status ------------------------------------------------------------------
+
+
+def test_config_status_reports_valid(
+    runner: CliRunner,
+    discovery_config_name: str,
+    db_discovery_config: Path,
+) -> None:
+    create_discovery_config(runner, discovery_config_name, "database", db_discovery_config)
+
+    result = runner.invoke(app, ["discover", "configs", "status", discovery_config_name, "--json"])
+
+    assert result.exit_code == ExitCode.OK
+    assert json.loads(result.stdout)["status"] == "valid"
+
+
+def test_config_status_reports_invalid(
+    runner: CliRunner,
+    discovery_config_name: str,
+    invalid_discovery_yaml: Path,
+) -> None:
+    create_discovery_config(runner, discovery_config_name, "database", invalid_discovery_yaml)
+
+    result = runner.invoke(app, ["discover", "configs", "status", discovery_config_name, "--json"])
+
+    assert result.exit_code == ExitCode.INVALID_INPUT
+    body = json.loads(result.stdout)
+    assert body["status"] == "invalid"
+    assert body["validation_error"]
+
+
+@pytest.mark.parametrize(
+    ("is_valid_yaml", "expected_status", "expected_exit"),
+    [
+        (True, "valid", ExitCode.OK),
+        (False, "invalid", ExitCode.INVALID_INPUT),
+    ],
+    ids=["valid", "invalid"],
+)
+def test_library_status(
+    runner: CliRunner,
+    discovery_library_name: str,
+    discovery_library_yaml: Path,
+    invalid_discovery_yaml: Path,
+    is_valid_yaml: bool,
+    expected_status: str,
+    expected_exit: ExitCode,
+) -> None:
+    source = discovery_library_yaml if is_valid_yaml else invalid_discovery_yaml
+    create_discovery_config_library(runner, discovery_library_name, source)
+
+    result = runner.invoke(app, ["discover", "libraries", "status", discovery_library_name, "--json"])
+
+    assert result.exit_code == expected_exit
+    body = json.loads(result.stdout)
+    assert body["status"] == expected_status
+    if not is_valid_yaml:
+        assert body["validation_error"]
