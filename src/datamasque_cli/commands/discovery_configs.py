@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from http import HTTPStatus
 from pathlib import Path
 
 import typer
@@ -231,7 +232,11 @@ def validate_config(
     try:
         created = client.create_discovery_config(config)
     except DataMasqueApiError as exc:
-        abort_api_error(f'Validation of discovery config "{file.name}" failed', exc)
+        abort_api_error(
+            f'Validation of discovery config "{file.name}" failed',
+            exc,
+            status_codes={HTTPStatus.BAD_REQUEST: ErrorCode.INVALID_INPUT},
+        )
 
     try:
         errors = created.validation_error_details

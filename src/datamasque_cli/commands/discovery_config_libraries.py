@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from http import HTTPStatus
 from pathlib import Path
 
 import typer
@@ -154,7 +155,11 @@ def validate_library(
     try:
         created = client.create_discovery_config_library(library)
     except DataMasqueApiError as exc:
-        abort_api_error(f'Validation of discovery config library "{file.name}" failed', exc)
+        abort_api_error(
+            f'Validation of discovery config library "{file.name}" failed',
+            exc,
+            status_codes={HTTPStatus.BAD_REQUEST: ErrorCode.INVALID_INPUT},
+        )
 
     try:
         if created.is_valid is ValidationStatus.invalid:

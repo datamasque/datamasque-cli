@@ -234,7 +234,7 @@ def test_validate_rejected_create_aborts_without_delete(
 
     result = runner.invoke(app, ["discover", "configs", "validate", "-f", str(cfg), "--type", "database"])
 
-    assert result.exit_code == ExitCode.ERROR
+    assert result.exit_code == ExitCode.INVALID_INPUT
     assert "config_yaml: invalid" in result.stderr
     client.delete_discovery_config_by_id_if_exists.assert_not_called()
 
