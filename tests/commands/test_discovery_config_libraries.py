@@ -205,6 +205,28 @@ def test_validate_reports_valid(mock_get_client: MagicMock, runner: CliRunner, t
 
 
 @patch(f"{MODULE}.get_client")
+def test_validate_rejected_create_aborts_without_delete(
+    mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path
+) -> None:
+    client = MagicMock()
+    mock_get_client.return_value = client
+    response = MagicMock()
+    response.status_code = HTTPStatus.BAD_REQUEST
+    response.json.return_value = {"detail": "config_yaml: invalid"}
+    client.create_discovery_config_library.side_effect = DataMasqueApiError(
+        "API request failed with status 400", response=response
+    )
+    lib = tmp_path / "lib.yaml"
+    lib.write_text("labels: []\n")
+
+    result = runner.invoke(app, ["discover", "libraries", "validate", "-f", str(lib)])
+
+    assert result.exit_code == ExitCode.INVALID_INPUT
+    assert "config_yaml: invalid" in " ".join(result.stderr.split())
+    client.delete_discovery_config_library_by_id_if_exists.assert_not_called()
+
+
+@patch(f"{MODULE}.get_client")
 def test_validate_invalid_exits_4(mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path) -> None:
     client = MagicMock()
     mock_get_client.return_value = client
