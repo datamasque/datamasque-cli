@@ -15,7 +15,7 @@ from datamasque.client.models.status import ValidationStatus
 from pydantic import ValidationError
 
 from datamasque_cli.client import get_client
-from datamasque_cli.errors import ErrorCode, ExitCode, abort, abort_if_invalid, confirm_or_abort
+from datamasque_cli.errors import ErrorCode, ExitCode, abort, abort_api_error, abort_if_invalid, confirm_or_abort
 from datamasque_cli.fileio import (
     FileKind,
     abort_if_too_large_for_sync_validation,
@@ -24,7 +24,7 @@ from datamasque_cli.fileio import (
     write_bytes_or_abort,
     write_text_or_abort,
 )
-from datamasque_cli.output import print_error, print_info, print_success, print_warning, render_output, should_emit_json
+from datamasque_cli.output import print_info, print_success, print_warning, render_output, should_emit_json
 
 app = typer.Typer(help="Manage masking rulesets.", no_args_is_help=True)
 
@@ -217,8 +217,7 @@ def validate_ruleset(
     try:
         created = client.create_or_update_ruleset(ruleset)
     except DataMasqueApiError as exc:
-        print_error(f"Validation failed: {exc}")
-        raise SystemExit(1) from None
+        abort_api_error(f"Validation of ruleset '{file.name}' failed", exc)
 
     # `try/finally` so a Ctrl-C or unexpected exception between create and
     # delete still cleans up the temp ruleset on the server.
