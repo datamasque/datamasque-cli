@@ -138,17 +138,15 @@ dm connections delete <name>                    # Delete a connection
 ### Rulesets
 
 ```console
-dm rulesets list                                  # List all rulesets
-dm rulesets list --type file                      # Filter by type
-dm rulesets get <name>                            # Show ruleset details
+dm rulesets list [--type database|file]           # List all rulesets, or filter by type
+dm rulesets get <name> [--type database|file]     # Show details; --type disambiguates same-name rulesets
 dm rulesets get <name> --yaml                     # Print raw YAML only
-dm rulesets get <name> --type file                # Disambiguate same-name rulesets
-dm rulesets create --name <n> --file rules.yaml   # Create/update (type auto-detected from YAML)
-dm rulesets create --name <n> --file rules.yaml --type file  # Force a type
-dm rulesets delete <name> [--type file|database]  # Delete a ruleset
+dm rulesets create --name <n> --file rules.yaml   # Create/update (type read from the existing ruleset)
+dm rulesets create --name <n> --file rules.yaml [--type database|file]  # Force a type
+dm rulesets delete <name> [--type database|file]  # Delete a ruleset
 dm rulesets generate --file request.json          # Generate from schema
 dm rulesets generate --file req.json -o out.yaml  # Generate to file
-dm rulesets validate --file rules.yaml            # Validate against server (YAML under 60 KiB)
+dm rulesets validate --file rules.yaml --type database|file  # Validate against server (YAML under 60 KiB)
 dm rulesets status <name>                         # Validation status; poll after creating YAML of 60 KiB+
 dm rulesets export-bundle -o bundle.zip           # Export rulesets + libraries + seeds
 dm rulesets import-bundle --file bundle.zip       # Import a previously exported bundle
@@ -234,13 +232,13 @@ dm discover config-snapshot <run-id> -o used.yaml    # Download the discovery co
 #### Discovery configs
 
 ```console
-dm discover configs list [--type database|file]                    # List configs
-dm discover configs get <name> [--type database] [--yaml]          # Show details or raw YAML
-dm discover configs defaults [--type database|file] -o cfg.yaml    # Built-in default as a starting point
-dm discover configs create --name <n> --type database -f cfg.yaml  # Create/update from YAML
-dm discover configs delete <name> [--type database]                # Delete a config
-dm discover configs validate -f cfg.yaml --type database           # Validate against server (YAML under 60 KiB)
-dm discover configs status <name> [--type database]                # Validation status; poll after creating YAML of 60 KiB+
+dm discover configs list [--type database|file]                       # List configs
+dm discover configs get <name> [--type database|file] [--yaml]        # Show details or raw YAML
+dm discover configs defaults [--type database|file] -o cfg.yaml       # Built-in default as a starting point
+dm discover configs create --name <n> -f cfg.yaml [--type database|file]  # Create/update from YAML
+dm discover configs delete <name> [--type database|file]              # Delete a config
+dm discover configs validate -f cfg.yaml --type database|file         # Validate against server (YAML under 60 KiB)
+dm discover configs status <name> [--type database|file]              # Validation status; poll after creating YAML of 60 KiB+
 ```
 
 #### Discovery config libraries

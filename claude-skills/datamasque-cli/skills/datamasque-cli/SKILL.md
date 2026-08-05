@@ -56,7 +56,7 @@ Pass repeated `--options key=value` for server-side knobs
 - **Ruleset namespaces.** `database` and `file` rulesets share a name
   namespace, so `customers` can exist in both. `dm run start` reads the
   source connection's type and picks the matching ruleset automatically.
-  For `get` / `create` / `delete`, pass `--type file|database` only when
+  For `get` / `create` / `delete`, pass `--type database|file` only when
   two rows share the name and you need to disambiguate.
 
 - **File masking needs a destination.** Database masking is in-place;

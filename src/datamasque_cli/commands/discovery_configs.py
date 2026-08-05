@@ -46,7 +46,7 @@ def _collapse_to_one_or_abort(matches: list[DiscoveryConfig], name: str) -> Disc
         abort(
             f"Multiple discovery configs named '{name}':\n  {options}",
             code=ErrorCode.AMBIGUOUS,
-            hint="Pass --type file|database to disambiguate.",
+            hint="Pass --type database|file to disambiguate.",
         )
     return matches[0]
 
@@ -165,14 +165,14 @@ def create_config(
         abort(
             f"No discovery config named '{name}' exists.",
             code=ErrorCode.NOT_FOUND,
-            hint="Pass --type file|database to create a new one.",
+            hint="Pass --type database|file to create a new one.",
         )
     else:
         options = ", ".join(c.config_type.value for c in existing)
         abort(
             f"Multiple discovery configs named '{name}' ({options}).",
             code=ErrorCode.AMBIGUOUS,
-            hint="Pass --type file|database to pick which one to update.",
+            hint="Pass --type database|file to pick which one to update.",
         )
 
     yaml_content = read_text_or_abort(file, FileKind.DISCOVERY_CONFIG)

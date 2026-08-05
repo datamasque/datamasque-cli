@@ -50,7 +50,7 @@ def _collapse_to_one_or_abort(matches: list[Ruleset], name: str) -> Ruleset:
         abort(
             f"Multiple rulesets named '{name}':\n  {options}",
             code=ErrorCode.AMBIGUOUS,
-            hint="Pass --type file|database to disambiguate.",
+            hint="Pass --type database|file to disambiguate.",
         )
     return matches[0]
 
@@ -145,14 +145,14 @@ def create_ruleset(
         abort(
             f"No ruleset named '{name}' exists.",
             code=ErrorCode.NOT_FOUND,
-            hint="Pass --type file|database to create a new one.",
+            hint="Pass --type database|file to create a new one.",
         )
     else:
         options = ", ".join(r.ruleset_type.value for r in existing)
         abort(
             f"Multiple rulesets named '{name}' ({options}).",
             code=ErrorCode.AMBIGUOUS,
-            hint="Pass --type file|database to pick which one to update.",
+            hint="Pass --type database|file to pick which one to update.",
         )
 
     yaml_content = read_text_or_abort(file, FileKind.RULESET)
