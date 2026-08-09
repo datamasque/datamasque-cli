@@ -90,10 +90,10 @@ def test_delete_with_type_leaves_other_namespace_intact(
 
 
 @pytest.mark.parametrize(
-    ("is_valid_yaml", "expected_status", "expected_exit"),
+    ("is_valid_yaml", "expected_status"),
     [
-        (True, "valid", ExitCode.OK),
-        (False, "invalid", ExitCode.INVALID_INPUT),
+        (True, "valid"),
+        (False, "invalid"),
     ],
     ids=["valid", "invalid"],
 )
@@ -104,7 +104,6 @@ def test_ruleset_status(
     invalid_ruleset_yaml: Path,
     is_valid_yaml: bool,
     expected_status: str,
-    expected_exit: ExitCode,
 ) -> None:
     source = db_yaml if is_valid_yaml else invalid_ruleset_yaml
     create = runner.invoke(
@@ -114,7 +113,7 @@ def test_ruleset_status(
 
     result = runner.invoke(app, ["rulesets", "status", ruleset_name, "--type", "database", "--json"])
 
-    assert result.exit_code == expected_exit
+    assert result.exit_code == ExitCode.OK
     body = json.loads(result.stdout)
     assert body["status"] == expected_status
     if not is_valid_yaml:
@@ -133,7 +132,7 @@ def test_ruleset_library_status_reports_invalid(
 
     result = runner.invoke(app, ["libraries", "status", ruleset_library_name, "--json"])
 
-    assert result.exit_code == ExitCode.INVALID_INPUT
+    assert result.exit_code == ExitCode.OK
     body = json.loads(result.stdout)
     assert body["status"] == "invalid"
     assert body["errors"]

@@ -8,7 +8,11 @@ from pathlib import Path
 
 import typer
 from datamasque.client import DataMasqueClient, RunId
-from datamasque.client.exceptions import DataMasqueApiError
+from datamasque.client.exceptions import (
+    DataMasqueApiError,
+    DiscoveryConfigNotFoundError,
+    InvalidDiscoveryConfigError,
+)
 from datamasque.client.models.connection import ConnectionId
 from datamasque.client.models.discovery import (
     FileDataDiscoveryFromConfigRequest,
@@ -17,10 +21,17 @@ from datamasque.client.models.discovery import (
     SchemaDiscoveryRequest,
 )
 from datamasque.client.models.discovery_config import DiscoveryConfigId, DiscoveryConfigType
+from datamasque.client.models.status import MaskingRunStatus
 
 from datamasque_cli.client import get_client
 from datamasque_cli.commands import discovery_config_libraries, discovery_configs
-from datamasque_cli.errors import ErrorCode, abort, abort_api_error
+from datamasque_cli.errors import (
+    ErrorCode,
+    abort,
+    abort_api_error,
+    abort_if_not_found,
+    require_id_or_abort,
+)
 from datamasque_cli.fileio import write_bytes_or_abort, write_text_or_abort
 from datamasque_cli.output import print_json, print_success, render_output, should_emit_json
 
@@ -29,23 +40,34 @@ app.add_typer(discovery_configs.app, name="configs")
 app.add_typer(discovery_config_libraries.app, name="libraries")
 
 
+def _run_status_or_abort_if_absent(client: DataMasqueClient, run_id: int) -> MaskingRunStatus | None:
+    """Return the run's status, `None` when it cannot be read, and abort when the run does not exist."""
+    try:
+        return client.get_run_info(RunId(run_id)).status
+    except DataMasqueApiError as exc:
+        abort_if_not_found(exc, f"Run {run_id}")
+        return None
+
+
 def _abort_if_run_output_missing(
+    client: DataMasqueClient,
     exc: DataMasqueApiError,
     run_id: int,
     output_label: str,
-    missing_statuses: tuple[HTTPStatus, ...] = (HTTPStatus.NOT_FOUND,),
 ) -> None:
-    """Turn the error a run without `output_label` returns into a not-found envelope."""
-    if exc.response is None or exc.response.status_code not in missing_statuses:
+    """Explain a missing run output from the run's own state."""
+    if exc.response.status_code not in (HTTPStatus.NOT_FOUND, HTTPStatus.BAD_REQUEST):
         return
-    abort(
-        f"No {output_label} available for run {run_id}.",
-        code=ErrorCode.NOT_FOUND,
-        hint=(
-            f"Discovery output is written once the run reaches a final state. "
-            f"Check status with `dm run status {run_id}`."
-        ),
-    )
+
+    status = _run_status_or_abort_if_absent(client, run_id)
+    if status is not None and not status.is_in_final_state:
+        abort(
+            f"No {output_label} available for run {run_id} yet; the run is {status.value}.",
+            code=ErrorCode.NOT_FOUND,
+            hint=f"Check progress with `dm run status {run_id}`.",
+        )
+
+    abort_api_error(f"No {output_label} available for run {run_id}", exc)
 
 
 def _write_or_echo(content: str, output: Path | None, success_label: str) -> None:
@@ -74,8 +96,7 @@ def _resolve_discovery_config_id(
     """
     match = client.get_discovery_config_by_name(name, expected_type)
     if match is not None:
-        assert match.id is not None
-        return match.id
+        return require_id_or_abort(match.id, f"discovery config '{name}'")
 
     other_type = (
         DiscoveryConfigType.file if expected_type is DiscoveryConfigType.database else DiscoveryConfigType.database
@@ -117,6 +138,10 @@ def schema_discovery(
             request = SchemaDiscoveryRequest(connection=ConnectionId(conn_id))
             run_id = client.start_schema_discovery_run(request)
             config_source = "default discovery"
+    except DiscoveryConfigNotFoundError as exc:
+        abort(str(exc), code=ErrorCode.NOT_FOUND)
+    except InvalidDiscoveryConfigError as exc:
+        abort(str(exc), code=ErrorCode.INVALID_INPUT)
     except DataMasqueApiError as exc:
         abort_api_error(f"Failed to start schema discovery on '{connection}'", exc)
 
@@ -125,7 +150,7 @@ def schema_discovery(
         f"Once finished, list results with: dm discover schema-results {run_id}"
     )
     if should_emit_json(is_json):
-        print_json({"id": int(run_id), "status": "queued"})
+        print_json({"id": int(run_id)})
 
 
 @app.command("file")
@@ -157,6 +182,10 @@ def start_file_discovery(
             request = FileDataDiscoveryRequest(connection=ConnectionId(conn_id))
             run_id = client.start_file_data_discovery_run(request)
             config_source = "default discovery"
+    except DiscoveryConfigNotFoundError as exc:
+        abort(str(exc), code=ErrorCode.NOT_FOUND)
+    except InvalidDiscoveryConfigError as exc:
+        abort(str(exc), code=ErrorCode.INVALID_INPUT)
     except DataMasqueApiError as exc:
         abort_api_error(f"Failed to start file data discovery on '{connection}'", exc)
 
@@ -165,7 +194,7 @@ def start_file_discovery(
         f"Once finished, download the report with: dm discover file-report {run_id}"
     )
     if should_emit_json(is_json):
-        print_json({"id": int(run_id), "status": "queued"})
+        print_json({"id": int(run_id)})
 
 
 @app.command("schema-results")
@@ -184,9 +213,7 @@ def schema_results(
     try:
         results = client.list_schema_discovery_results(RunId(run_id))
     except DataMasqueApiError as exc:
-        _abort_if_run_output_missing(
-            exc, run_id, "schema discovery results", (HTTPStatus.NOT_FOUND, HTTPStatus.BAD_REQUEST)
-        )
+        _abort_if_run_output_missing(client, exc, run_id, "schema discovery results")
         abort_api_error(f"Failed to list schema discovery results for run {run_id}", exc)
 
     data = [
@@ -223,7 +250,7 @@ def sdd_report(
     try:
         report = client.get_sdd_report(RunId(run_id))
     except DataMasqueApiError as exc:
-        _abort_if_run_output_missing(exc, run_id, "sensitive data discovery report")
+        _abort_if_run_output_missing(client, exc, run_id, "sensitive data discovery report")
         abort_api_error(f"Failed to download sensitive data discovery report for run {run_id}", exc)
     _write_or_echo(report, output, "SDD report")
 
@@ -244,7 +271,7 @@ def db_discovery_report(
     try:
         report = client.get_db_discovery_result_report(RunId(run_id))
     except DataMasqueApiError as exc:
-        _abort_if_run_output_missing(exc, run_id, "database discovery report")
+        _abort_if_run_output_missing(client, exc, run_id, "database discovery report")
         abort_api_error(f"Failed to download database discovery report for run {run_id}", exc)
 
     if isinstance(report, bytes):
@@ -274,7 +301,7 @@ def file_discovery_report(
     try:
         report = client.get_file_data_discovery_report(RunId(run_id))
     except DataMasqueApiError as exc:
-        _abort_if_run_output_missing(exc, run_id, "file discovery report")
+        _abort_if_run_output_missing(client, exc, run_id, "file discovery report")
         abort_api_error(f"Failed to download file discovery report for run {run_id}", exc)
     serialised_report = [result.model_dump(mode="json") for result in report]
 
@@ -317,6 +344,6 @@ def download_config_snapshot(
     try:
         snapshot = client.get_discovery_run_config_snapshot_yaml(RunId(run_id))
     except DataMasqueApiError as exc:
-        _abort_if_run_output_missing(exc, run_id, "discovery config snapshot")
+        _abort_if_run_output_missing(client, exc, run_id, "discovery config snapshot")
         abort_api_error(f"Failed to download discovery config snapshot for run {run_id}", exc)
     _write_or_echo(snapshot, output, "Discovery config snapshot")

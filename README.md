@@ -218,11 +218,11 @@ dm users delete <username>                      # Delete a user
 ```console
 dm discover schema <connection>                      # Schema discovery (built-in keyword-driven)
 dm discover schema <connection> --config <name>      # Schema discovery from a saved database config
-dm discover schema <connection> --json               # {"id": <run-id>, "status": "queued"}
+dm discover schema <connection> --json               # {"id": <run-id>}
 dm discover schema-results <run-id>                  # List schema-discovery results once the run finishes
 dm discover file <connection>                        # File data discovery (built-in keyword-driven)
 dm discover file <connection> --config <name>        # File data discovery from a saved file config
-dm discover file <connection> --json                 # {"id": <run-id>, "status": "queued"}
+dm discover file <connection> --json                 # {"id": <run-id>}
 dm discover sdd-report <run-id>                      # Sensitive data discovery report
 dm discover db-report <run-id>                       # Database discovery CSV
 dm discover file-report <run-id>                     # File discovery report
@@ -340,6 +340,7 @@ empty on failure):
 |    8 | conflict          | operation rejected by server state             |
 |    9 | transport_error   | network or TLS failure                         |
 |   10 | cancelled         | you answered no to a confirmation prompt       |
+|   11 | forbidden         | user lacks permission for the operation        |
 
 Exit codes are stable across minor versions. The `error.code` string in the
 JSON envelope mirrors these names.

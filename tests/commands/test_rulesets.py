@@ -467,25 +467,23 @@ def test_validate_oversize_aborts_before_any_request(
 
 
 @pytest.mark.parametrize(
-    ("is_valid", "errors", "expected_exit"),
+    ("is_valid", "errors"),
     [
-        (ValidationStatus.valid, [], ExitCode.OK),
+        (ValidationStatus.valid, []),
         (
             ValidationStatus.invalid,
             [ValidationErrorDetails(message="Missing `key` in `tasks`.", line_number=3)],
-            ExitCode.INVALID_INPUT,
         ),
-        (ValidationStatus.in_progress, [], ExitCode.OK),
+        (ValidationStatus.in_progress, []),
     ],
     ids=["valid", "invalid", "in_progress"],
 )
 @patch(f"{MODULE}.get_client")
-def test_status_reports_state_and_exit_code(
+def test_status_reports_state(
     mock_get_client: MagicMock,
     runner: CliRunner,
     is_valid: ValidationStatus,
     errors: list[ValidationErrorDetails],
-    expected_exit: ExitCode,
 ) -> None:
     client = MagicMock()
     mock_get_client.return_value = client
@@ -493,7 +491,7 @@ def test_status_reports_state_and_exit_code(
 
     result = runner.invoke(app, ["rulesets", "status", "demo", "--json"])
 
-    assert result.exit_code == expected_exit
+    assert result.exit_code == ExitCode.OK
     assert f'"status": "{is_valid.value}"' in result.stdout
     for error in errors:
         assert error.message in result.stdout

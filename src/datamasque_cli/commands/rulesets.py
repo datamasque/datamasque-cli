@@ -15,9 +15,15 @@ from datamasque.client.models.status import ValidationStatus
 from pydantic import ValidationError
 
 from datamasque_cli.client import get_client
-from datamasque_cli.errors import ErrorCode, ExitCode, abort, abort_api_error, abort_if_invalid, confirm_or_abort
+from datamasque_cli.errors import (
+    ErrorCode,
+    abort,
+    abort_api_error,
+    abort_if_invalid,
+    confirm_or_abort,
+    require_id_or_abort,
+)
 from datamasque_cli.fileio import (
-    FileKind,
     abort_if_too_large_for_sync_validation,
     read_json_object_or_abort,
     read_text_or_abort,
@@ -155,7 +161,7 @@ def create_ruleset(
             hint="Pass --type database|file to pick which one to update.",
         )
 
-    yaml_content = read_text_or_abort(file, FileKind.RULESET)
+    yaml_content = read_text_or_abort(file)
     ruleset = Ruleset(name=name, yaml=yaml_content, ruleset_type=rs_type)
     client.create_or_update_ruleset(ruleset)
     print_success(f"Ruleset '{name}' ({rs_type.value}) created/updated.")
@@ -173,12 +179,12 @@ def delete_ruleset(
     """Delete a ruleset by name."""
     client = get_client(profile)
     match = _collapse_to_one_or_abort(_find_by_name(client, name, ruleset_type), name)
+    ruleset_id = require_id_or_abort(match.id, f"ruleset '{name}'")
 
     if not is_confirmed:
         confirm_or_abort(f"Delete ruleset '{name}' ({match.ruleset_type.value})?")
 
-    assert match.id is not None  # Populated by list_rulesets
-    client.delete_ruleset_by_id_if_exists(match.id)
+    client.delete_ruleset_by_id_if_exists(ruleset_id)
     print_success(f"Ruleset '{name}' ({match.ruleset_type.value}) deleted.")
 
 
@@ -200,11 +206,10 @@ def validate_ruleset(
 
     Note that rulesets over 60 KiB validate asynchronously and cannot be validated here.
     """
-    yaml_content = read_text_or_abort(file, FileKind.RULESET)
+    yaml_content = read_text_or_abort(file)
     abort_if_too_large_for_sync_validation(
         yaml_content,
         file,
-        FileKind.RULESET,
         create_command=f"dm rulesets create --name <name> --type {ruleset_type.value} -f {file}",
         status_command="dm rulesets status <name>",
     )
@@ -335,8 +340,6 @@ def show_ruleset_status(
 
     if match.is_valid is ValidationStatus.in_progress:
         print_info("Still validating — run this command again shortly.")
-    if match.is_valid is ValidationStatus.invalid:
-        raise SystemExit(ExitCode.INVALID_INPUT)
 
 
 @app.command("generate")
@@ -353,7 +356,7 @@ def generate_ruleset(
     The request JSON format matches the DataMasque API's /api/generate-ruleset/v2/ endpoint.
     """
     client = get_client(profile)
-    raw_request = read_json_object_or_abort(request_file, FileKind.GENERATION_REQUEST)
+    raw_request = read_json_object_or_abort(request_file)
 
     try:
         if is_file_ruleset:

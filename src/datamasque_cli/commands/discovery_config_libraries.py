@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import uuid
-from http import HTTPStatus
 from pathlib import Path
 
 import typer
@@ -12,8 +11,8 @@ from datamasque.client.models.discovery_config_library import DiscoveryConfigLib
 from datamasque.client.models.status import ValidationStatus
 
 from datamasque_cli.client import get_client
-from datamasque_cli.errors import ErrorCode, ExitCode, abort, abort_api_error, confirm_or_abort
-from datamasque_cli.fileio import FileKind, read_text_or_abort
+from datamasque_cli.errors import ErrorCode, abort, abort_api_error, confirm_or_abort
+from datamasque_cli.fileio import read_text_or_abort
 from datamasque_cli.output import print_success, print_warning, render_output
 
 app = typer.Typer(help="Manage discovery config libraries (configurable discovery).", no_args_is_help=True)
@@ -94,7 +93,7 @@ def create_library(
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Create or update a discovery config library from a YAML file."""
-    yaml_content = read_text_or_abort(file, FileKind.DISCOVERY_CONFIG_LIBRARY)
+    yaml_content = read_text_or_abort(file)
 
     client = get_client(profile)
     library = DiscoveryConfigLibrary(name=name, namespace=namespace, yaml=yaml_content)
@@ -146,7 +145,7 @@ def validate_library(
     Creates a temporary library to trigger server-side validation,
     then deletes it. Reports any validation errors.
     """
-    yaml_content = read_text_or_abort(file, FileKind.DISCOVERY_CONFIG_LIBRARY)
+    yaml_content = read_text_or_abort(file)
     temp_name = f"__dm_cli_validate_{uuid.uuid4().hex}"
 
     client = get_client(profile)
@@ -155,11 +154,7 @@ def validate_library(
     try:
         created = client.create_discovery_config_library(library)
     except DataMasqueApiError as exc:
-        abort_api_error(
-            f'Validation of discovery config library "{file.name}" failed',
-            exc,
-            status_codes={HTTPStatus.BAD_REQUEST: ErrorCode.INVALID_INPUT},
-        )
+        abort_api_error(f'Validation of discovery config library "{file.name}" failed', exc)
 
     try:
         if created.is_valid is ValidationStatus.invalid:
@@ -185,10 +180,7 @@ def show_library_status(
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
     is_json: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
-    """Show a discovery config library's validation status.
-
-    Exits 0 when valid, 4 when invalid.
-    """
+    """Show a discovery config library's validation status."""
     client = get_client(profile)
     lib = client.get_discovery_config_library_by_name(name, namespace)
 
@@ -206,6 +198,3 @@ def show_library_status(
         "validation_error": lib.validation_error,
     }
     render_output(data, is_json=is_json, title=f"Discovery Config Library: {lib.name}")
-
-    if lib.is_valid is ValidationStatus.invalid:
-        raise SystemExit(ExitCode.INVALID_INPUT)

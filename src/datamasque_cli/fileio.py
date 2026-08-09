@@ -7,7 +7,6 @@ content ends the command with a coded error naming the file, not a traceback.
 from __future__ import annotations
 
 import json
-from enum import StrEnum
 from pathlib import Path
 
 from pydantic import JsonValue
@@ -19,64 +18,45 @@ MAX_SYNC_VALIDATION_KIB = 60
 _BYTES_PER_KIB = 1024
 
 
-class FileKind(StrEnum):
-    """What a user-supplied file holds."""
-
-    RULESET = "ruleset"
-    RULESET_LIBRARY = "ruleset library"
-    DISCOVERY_CONFIG = "discovery config"
-    DISCOVERY_CONFIG_LIBRARY = "discovery config library"
-    CONNECTION = "connection"
-    GENERATION_REQUEST = "generation request"
-    MASK_INPUT = "mask input"
-
-
-def _format_file_label(kind: FileKind, file: Path) -> str:
-    """Return `<kind> file <path>`, for naming a user-supplied file in an error."""
-    return f"{kind} file {file}"
-
-
 def abort_if_too_large_for_sync_validation(
-    yaml_content: str, file: Path, kind: FileKind, *, create_command: str, status_command: str
+    yaml_content: str, file: Path, *, create_command: str, status_command: str
 ) -> None:
     """Abort when `yaml_content` is too large for the server to validate synchronously."""
     size = len(yaml_content.encode("utf-8"))
     if size < MAX_SYNC_VALIDATION_KIB * _BYTES_PER_KIB:
         return
     abort(
-        f"{_format_file_label(kind, file)} is {size // _BYTES_PER_KIB} KiB; "
+        f"{file} is {size // _BYTES_PER_KIB} KiB; "
         f"validation for YAML of {MAX_SYNC_VALIDATION_KIB} KiB or larger runs asynchronously.",
         code=ErrorCode.INVALID_INPUT,
         hint=f"Create it with `{create_command}`, then check `{status_command}` until validation finishes.",
     )
 
 
-def read_text_or_abort(file: Path, kind: FileKind) -> str:
+def read_text_or_abort(file: Path) -> str:
     """Read `file` as UTF-8, and abort when it cannot be read or decoded."""
-    label = _format_file_label(kind, file)
     try:
         content = file.read_text(encoding="utf-8")
     except UnicodeDecodeError:
-        abort(f"{label} is not valid UTF-8.", code=ErrorCode.INVALID_INPUT, hint="Re-save the file as UTF-8.")
+        abort(f"{file} is not valid UTF-8.", code=ErrorCode.INVALID_INPUT, hint="Re-save the file as UTF-8.")
     except OSError as exc:
         code = ErrorCode.NOT_FOUND if isinstance(exc, FileNotFoundError) else ErrorCode.INVALID_INPUT
-        abort(f"Could not read {label}: {exc.strerror or exc}", code=code)
+        abort(f"Could not read {file}: {exc.strerror or exc}", code=code)
 
     if not content.strip():
-        abort(f"{label} is empty.", code=ErrorCode.INVALID_INPUT)
+        abort(f"{file} is empty.", code=ErrorCode.INVALID_INPUT)
     return content
 
 
-def read_json_object_or_abort(file: Path, kind: FileKind) -> dict[str, JsonValue]:
+def read_json_object_or_abort(file: Path) -> dict[str, JsonValue]:
     """Read `file` as a UTF-8 JSON object, and abort when it cannot be read or parsed."""
-    content = read_text_or_abort(file, kind)
-    label = _format_file_label(kind, file)
+    content = read_text_or_abort(file)
     try:
         parsed: JsonValue = json.loads(content)
     except json.JSONDecodeError as exc:
-        abort(f"{label} is not valid JSON: {exc}", code=ErrorCode.INVALID_INPUT)
+        abort(f"{file} is not valid JSON: {exc}", code=ErrorCode.INVALID_INPUT)
     if not isinstance(parsed, dict):
-        abort(f"{label} must contain a JSON object.", code=ErrorCode.INVALID_INPUT)
+        abort(f"{file} must contain a JSON object.", code=ErrorCode.INVALID_INPUT)
     return parsed
 
 

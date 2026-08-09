@@ -36,7 +36,15 @@ from datamasque_cli.commands import (
 )
 from datamasque_cli.errors import ErrorCode, abort, abort_api_error
 from datamasque_cli.output import print_json, should_emit_json, stdout_console
-from datamasque_cli.protocols import ArgumentEntry, CommandEntry, CompactEntry, Group, OptionEntry
+from datamasque_cli.protocols import (
+    Argument,
+    ArgumentEntry,
+    CommandEntry,
+    CompactEntry,
+    Group,
+    Option,
+    OptionEntry,
+)
 
 app = typer.Typer(
     name="dm",
@@ -78,7 +86,7 @@ def walk_commands(group: Group, path_prefix: str = "") -> list[CommandEntry]:
             continue
         options: list[OptionEntry | ArgumentEntry] = []
         for param in cmd.params:
-            if param.param_type_name == "option":
+            if isinstance(param, Option):
                 options.append(
                     OptionEntry(
                         flags=list(param.opts),
@@ -87,7 +95,7 @@ def walk_commands(group: Group, path_prefix: str = "") -> list[CommandEntry]:
                         is_flag=param.is_flag,
                     )
                 )
-            elif param.param_type_name == "argument":
+            elif isinstance(param, Argument):
                 options.append(
                     ArgumentEntry(
                         name=param.name,

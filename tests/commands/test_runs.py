@@ -559,3 +559,54 @@ def test_run_report_reports_server_reason_on_other_errors(
     assert "Report storage is unavailable." in " ".join(result.stderr.split())
     assert "No report available" not in result.stderr
     assert "Traceback" not in result.stderr
+
+
+_UNKNOWN_RUN_COMMANDS = [
+    (["run", "status", "42"], "get_run_info"),
+    (["run", "logs", "42"], "get_run_log"),
+    (["run", "cancel", "42"], "cancel_run"),
+    (["run", "retry", "42"], "get_run_info"),
+    (["run", "wait", "42"], "get_run_info"),
+]
+
+
+@pytest.mark.parametrize(("command", "client_method"), _UNKNOWN_RUN_COMMANDS)
+@patch(f"{MODULE}.get_client")
+def test_unknown_run_is_not_found(
+    mock_get_client: MagicMock,
+    mock_client: MagicMock,
+    runner: CliRunner,
+    command: list[str],
+    client_method: str,
+) -> None:
+    mock_get_client.return_value = mock_client
+    response = MagicMock(status_code=404)
+    response.json.return_value = {"detail": "The requested run was not found."}
+    getattr(mock_client, client_method).side_effect = DataMasqueApiError("404", response=response)
+
+    result = runner.invoke(app, command)
+
+    assert result.exit_code == ExitCode.NOT_FOUND
+    assert "Run 42 not found." in " ".join(result.stderr.split())
+
+
+@pytest.mark.parametrize(("command", "client_method"), _UNKNOWN_RUN_COMMANDS)
+@patch(f"{MODULE}.get_client")
+def test_other_run_request_failures_report_the_server_reason(
+    mock_get_client: MagicMock,
+    mock_client: MagicMock,
+    runner: CliRunner,
+    command: list[str],
+    client_method: str,
+) -> None:
+    mock_get_client.return_value = mock_client
+    response = MagicMock(status_code=500)
+    response.json.return_value = {"detail": "Run storage is unavailable."}
+    getattr(mock_client, client_method).side_effect = DataMasqueApiError("boom", response=response)
+
+    result = runner.invoke(app, command)
+
+    assert result.exit_code == ExitCode.ERROR
+    assert "Run storage is unavailable." in " ".join(result.stderr.split())
+    assert "not found" not in result.stderr
+    assert "Traceback" not in result.stderr

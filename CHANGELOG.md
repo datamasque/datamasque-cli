@@ -27,6 +27,8 @@
 ### Changed
 - A declined confirmation prompt now exits 10 (`cancelled`) instead of 1,
   so a decision is not reported as a failure. Ctrl-C still exits 1.
+- `dm run start --json` and `dm run retry --json` only emit the run id.
+  `"status": "queued"` is no longer returned.
 
 ### Fixed
 - `dm rulesets generate`, `dm connections update --password`, and the

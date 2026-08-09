@@ -138,42 +138,100 @@ def test_library_validate_rejects_invalid_yaml(runner: CliRunner, invalid_discov
     assert result.exit_code == ExitCode.INVALID_INPUT
 
 
+def test_library_delete_refuses_while_imported_then_force_succeeds(
+    runner: CliRunner,
+    discovery_library_name: str,
+    discovery_config_name: str,
+    tmp_path: Path,
+) -> None:
+    library = tmp_path / "importable.yaml"
+    library.write_text(
+        "labels:\n"
+        "  - name: dm_int_label\n"
+        "    description: Integration test label\n"
+        "    categories: [PII]\n"
+        "metadata_rules:\n"
+        "  - name: DM Int Rule\n"
+        "    label: dm_int_label\n"
+        "    column:\n"
+        "      type: regex\n"
+        "      pattern: dm_int_column\n"
+    )
+    create_discovery_config_library(runner, discovery_library_name, library, namespace=DISCOVERY_TEST_NAMESPACE)
+
+    ref = f"{DISCOVERY_TEST_NAMESPACE}/{discovery_library_name}"
+    config = tmp_path / "importing.yaml"
+    config.write_text(
+        f"imports:\n"
+        f"- {ref}\n"
+        f"labels:\n"
+        f'  $ref: "{ref}#labels"\n'
+        f"metadata_rules:\n"
+        f'  $ref: "{ref}#metadata_rules"\n'
+        f"idd_rules: []\n"
+        f"files:\n"
+        f"  include:\n"
+        f'  - "*.csv"\n'
+    )
+    create_discovery_config(runner, discovery_config_name, "file", config)
+
+    delete = [
+        "discover",
+        "libraries",
+        "delete",
+        discovery_library_name,
+        "--namespace",
+        DISCOVERY_TEST_NAMESPACE,
+        "--yes",
+    ]
+
+    conflict = runner.invoke(app, delete)
+    assert conflict.exit_code == ExitCode.CONFLICT
+    assert "--force" in " ".join(conflict.stderr.split())
+
+    forced = runner.invoke(app, [*delete, "--force"])
+    assert forced.exit_code == ExitCode.OK
+
+    status = runner.invoke(app, ["discover", "configs", "status", discovery_config_name, "--type", "file", "--json"])
+    assert json.loads(status.stdout)["status"] == "invalid"
+
+
 # --- status ------------------------------------------------------------------
 
 
-def test_config_status_reports_valid(
+@pytest.mark.parametrize(
+    ("is_valid_yaml", "expected_status"),
+    [
+        (True, "valid"),
+        (False, "invalid"),
+    ],
+    ids=["valid", "invalid"],
+)
+def test_config_status_reports_stored_validation_state(
     runner: CliRunner,
     discovery_config_name: str,
     db_discovery_config: Path,
+    invalid_discovery_yaml: Path,
+    is_valid_yaml: bool,
+    expected_status: str,
 ) -> None:
-    create_discovery_config(runner, discovery_config_name, "database", db_discovery_config)
+    source = db_discovery_config if is_valid_yaml else invalid_discovery_yaml
+    create_discovery_config(runner, discovery_config_name, "database", source)
 
     result = runner.invoke(app, ["discover", "configs", "status", discovery_config_name, "--json"])
 
     assert result.exit_code == ExitCode.OK
-    assert json.loads(result.stdout)["status"] == "valid"
-
-
-def test_config_status_reports_invalid(
-    runner: CliRunner,
-    discovery_config_name: str,
-    invalid_discovery_yaml: Path,
-) -> None:
-    create_discovery_config(runner, discovery_config_name, "database", invalid_discovery_yaml)
-
-    result = runner.invoke(app, ["discover", "configs", "status", discovery_config_name, "--json"])
-
-    assert result.exit_code == ExitCode.INVALID_INPUT
     body = json.loads(result.stdout)
-    assert body["status"] == "invalid"
-    assert body["validation_error"]
+    assert body["status"] == expected_status
+    if not is_valid_yaml:
+        assert body["validation_error"]
 
 
 @pytest.mark.parametrize(
-    ("is_valid_yaml", "expected_status", "expected_exit"),
+    ("is_valid_yaml", "expected_status"),
     [
-        (True, "valid", ExitCode.OK),
-        (False, "invalid", ExitCode.INVALID_INPUT),
+        (True, "valid"),
+        (False, "invalid"),
     ],
     ids=["valid", "invalid"],
 )
@@ -184,14 +242,13 @@ def test_library_status(
     invalid_discovery_yaml: Path,
     is_valid_yaml: bool,
     expected_status: str,
-    expected_exit: ExitCode,
 ) -> None:
     source = discovery_library_yaml if is_valid_yaml else invalid_discovery_yaml
     create_discovery_config_library(runner, discovery_library_name, source)
 
     result = runner.invoke(app, ["discover", "libraries", "status", discovery_library_name, "--json"])
 
-    assert result.exit_code == expected_exit
+    assert result.exit_code == ExitCode.OK
     body = json.loads(result.stdout)
     assert body["status"] == expected_status
     if not is_valid_yaml:

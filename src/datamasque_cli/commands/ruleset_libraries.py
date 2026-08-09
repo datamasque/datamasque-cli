@@ -10,8 +10,8 @@ from datamasque.client.models.ruleset_library import RulesetLibrary
 from datamasque.client.models.status import ValidationStatus
 
 from datamasque_cli.client import get_client
-from datamasque_cli.errors import ErrorCode, ExitCode, abort, abort_api_error, abort_if_invalid, confirm_or_abort
-from datamasque_cli.fileio import FileKind, read_text_or_abort
+from datamasque_cli.errors import ErrorCode, abort, abort_api_error, abort_if_invalid, confirm_or_abort
+from datamasque_cli.fileio import read_text_or_abort
 from datamasque_cli.output import print_info, print_success, render_output, should_emit_json
 
 app = typer.Typer(help="Manage ruleset libraries.", no_args_is_help=True)
@@ -78,7 +78,7 @@ def create_library(
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Create or update a ruleset library from a YAML file."""
-    yaml_content = read_text_or_abort(file, FileKind.RULESET_LIBRARY)
+    yaml_content = read_text_or_abort(file)
     client = get_client(profile)
 
     library = RulesetLibrary(name=name, namespace=namespace, yaml=yaml_content)
@@ -174,8 +174,6 @@ def show_library_status(
 
     if lib.is_valid is ValidationStatus.in_progress:
         print_info("Still validating — run this command again shortly.")
-    if lib.is_valid is ValidationStatus.invalid:
-        raise SystemExit(ExitCode.INVALID_INPUT)
 
 
 @app.command("usage")

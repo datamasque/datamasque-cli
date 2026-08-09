@@ -286,7 +286,7 @@ def test_test_connection_reports_unreachable_target(
 
     result = runner.invoke(app, ["connections", "test", "my_conn"])
 
-    assert result.exit_code == ExitCode.ERROR
+    assert result.exit_code == ExitCode.INVALID_INPUT
     assert 'DNS lookup for "postgres-dev" failed.' in " ".join(result.stderr.split())
     assert "Traceback" not in result.stderr
 

@@ -10,12 +10,12 @@ from pathlib import Path
 
 import typer
 from datamasque.client import DataMasqueClient, RunId
-from datamasque.client.exceptions import DataMasqueApiError, RunNotCancellableError
+from datamasque.client.exceptions import DataMasqueApiError, InvalidLibraryError, RunNotCancellableError
 from datamasque.client.models.connection import ConnectionConfig
 from datamasque.client.models.runs import MaskingRunOptions, MaskingRunRequest, RunInfo
 
 from datamasque_cli.client import get_client
-from datamasque_cli.errors import ErrorCode, abort, abort_api_error
+from datamasque_cli.errors import ErrorCode, abort, abort_api_error, abort_if_not_found
 from datamasque_cli.fileio import write_text_or_abort
 from datamasque_cli.output import (
     console,
@@ -58,6 +58,35 @@ def _format_run_dict(run_data: dict[str, object], *, is_styled: bool = False) ->
         "destination": run_data.get("destination_connection_name"),
         "created": run_data.get("created_time"),
     }
+
+
+def _start_run_or_abort(client: DataMasqueClient, request: MaskingRunRequest) -> RunId:
+    """Start a masking run, or abort with the server's reason for refusing it."""
+    try:
+        return client.start_masking_run(request)
+    except InvalidLibraryError as exc:
+        abort(str(exc), code=ErrorCode.INVALID_INPUT)
+    except DataMasqueApiError as exc:
+        abort_api_error("Failed to start the run", exc)
+
+
+def _get_run_or_abort(client: DataMasqueClient, run_id: int) -> RunInfo:
+    """Return the run, or abort when the server rejects the lookup."""
+    try:
+        return client.get_run_info(RunId(run_id))
+    except DataMasqueApiError as exc:
+        abort_if_not_found(exc, f"Run {run_id}")
+        abort_api_error(f"Could not read run {run_id}", exc)
+
+
+def _get_run_log_or_abort(client: DataMasqueClient, run_id: int) -> str:
+    """Return the run's log, or abort when the server rejects the request."""
+    try:
+        log: str = client.get_run_log(RunId(run_id))
+    except DataMasqueApiError as exc:
+        abort_if_not_found(exc, f"Run {run_id}")
+        abort_api_error(f"Could not read the log for run {run_id}", exc)
+    return log
 
 
 def _resolve_connection(client: DataMasqueClient, name_or_id: str) -> ConnectionConfig:
@@ -209,12 +238,12 @@ def start_run(
         destination_connection=destination_id,
         options=MaskingRunOptions.model_validate(_parse_options(options)),
     )
-    run_id = client.start_masking_run(run_request)
+    run_id = _start_run_or_abort(client, run_request)
     print_success(f"Run {run_id} started ({run_name}).")
 
     if is_background:
         if should_emit_json(is_json):
-            print_json({"id": int(run_id), "status": "queued"})
+            print_json({"id": int(run_id)})
         return
 
     _wait_for_run(client, run_id, is_json=is_json, ruleset=ruleset, connection=connection)
@@ -228,7 +257,7 @@ def run_status(
 ) -> None:
     """Get status of a masking run."""
     client = get_client(profile)
-    run = client.get_run_info(RunId(run_id))
+    run = _get_run_or_abort(client, run_id)
     # Skip rich styling tags when output will be JSON — otherwise they'd appear
     # as literal "[status.finished]finished[/status.finished]" in the dump.
     is_styled = not should_emit_json(is_json)
@@ -256,7 +285,10 @@ def list_runs(
     if limit is not None:
         params.append(f"limit={limit}")
     query = f"?{'&'.join(params)}" if params else ""
-    response = client.make_request("GET", f"/api/runs/{query}")
+    try:
+        response = client.make_request("GET", f"/api/runs/{query}")
+    except DataMasqueApiError as exc:
+        abort_api_error("Failed to list runs", exc)
     body = response.json()
 
     # The API may return a paginated envelope or a flat list depending on version.
@@ -293,7 +325,7 @@ def run_logs(
 
     raw_mode = should_emit_json(is_json)
     if not follow:
-        log = client.get_run_log(RunId(run_id))
+        log = _get_run_log_or_abort(client, run_id)
         if raw_mode:
             typer.echo(log)
         else:
@@ -302,7 +334,7 @@ def run_logs(
 
     printed = 0
     while True:
-        log = client.get_run_log(RunId(run_id))
+        log = _get_run_log_or_abort(client, run_id)
         # Defend against server-side log rotation shrinking the buffer:
         # reset the cursor rather than slicing past the end.
         printed = min(printed, len(log))
@@ -314,7 +346,7 @@ def run_logs(
                 _print_pretty_logs(chunk)
             printed = len(log)
 
-        info = client.get_run_info(RunId(run_id))
+        info = _get_run_or_abort(client, run_id)
         if info.status.is_in_final_state:
             return
         time.sleep(_POLL_INTERVAL_SECONDS)
@@ -331,6 +363,9 @@ def cancel_run(
         client.cancel_run(RunId(run_id))
     except RunNotCancellableError as exc:
         abort(str(exc), code=ErrorCode.CONFLICT)
+    except DataMasqueApiError as exc:
+        abort_if_not_found(exc, f"Run {run_id}")
+        abort_api_error(f"Could not cancel run {run_id}", exc)
     print_success(f"Run {run_id} cancellation requested.")
 
 
@@ -391,7 +426,7 @@ def retry_run(
     connection or ruleset since then are picked up automatically.
     """
     client = get_client(profile)
-    original = client.get_run_info(RunId(run_id))
+    original = _get_run_or_abort(client, run_id)
 
     source_id = original.source_connection.id
     ruleset_id = original.ruleset
@@ -416,12 +451,12 @@ def retry_run(
         destination_connection=str(destination_id) if destination_id else None,
         options=MaskingRunOptions.model_validate(options),
     )
-    new_run_id = client.start_masking_run(run_request)
+    new_run_id = _start_run_or_abort(client, run_request)
     print_success(f"Run {new_run_id} started (retry of {run_id}, {run_name}).")
 
     if is_background:
         if should_emit_json(is_json):
-            print_json({"id": int(new_run_id), "status": "queued"})
+            print_json({"id": int(new_run_id)})
         return
 
     _wait_for_run(client, new_run_id, is_json=is_json)
@@ -455,7 +490,7 @@ def _wait_for_run(
 
     with console.status(f"Waiting for run {run_id}...") as spinner:
         while True:
-            run = client.get_run_info(run_id)
+            run = _get_run_or_abort(client, run_id)
             if run.status.is_in_final_state:
                 break
             spinner.update(f"Run {run_id}: {run.status.value}")

@@ -40,6 +40,38 @@ def test_unhandled_api_conflict_keeps_its_code(mock_app: MagicMock) -> None:
     assert exc_info.value.code == ExitCode.CONFLICT
 
 
+@pytest.mark.parametrize(
+    ("status", "expected_exit"),
+    [
+        (401, ExitCode.AUTH_FAILED),
+        (403, ExitCode.FORBIDDEN),
+        (404, ExitCode.NOT_FOUND),
+    ],
+)
+@patch(f"{MODULE}.app")
+def test_unhandled_api_error_maps_status_to_its_code(mock_app: MagicMock, status: int, expected_exit: ExitCode) -> None:
+    response = MagicMock(status_code=status)
+    response.json.return_value = {"detail": "The requested run was not found."}
+    mock_app.side_effect = DataMasqueApiError("boom", response=response)
+
+    with pytest.raises(SystemExit) as exc_info:
+        main()
+
+    assert exc_info.value.code == expected_exit
+
+
+@patch(f"{MODULE}.app")
+def test_auth_failure_hints_at_login(mock_app: MagicMock, capsys: pytest.CaptureFixture[str]) -> None:
+    response = MagicMock(status_code=401)
+    response.json.return_value = {"detail": "Token is invalid or expired."}
+    mock_app.side_effect = DataMasqueApiError("boom", response=response)
+
+    with pytest.raises(SystemExit):
+        main()
+
+    assert "dm auth login" in " ".join(capsys.readouterr().err.split())
+
+
 @patch(f"{MODULE}.app")
 def test_transport_error_aborts_with_transport_code(mock_app: MagicMock) -> None:
     mock_app.side_effect = DataMasqueTransportError("Connection reset by peer")

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import uuid
-from http import HTTPStatus
 from pathlib import Path
 
 import typer
@@ -13,9 +12,15 @@ from datamasque.client.models.discovery_config import DiscoveryConfig, Discovery
 from datamasque.client.models.status import ValidationErrorDetails, ValidationStatus
 
 from datamasque_cli.client import get_client
-from datamasque_cli.errors import ErrorCode, ExitCode, abort, abort_api_error, abort_if_invalid, confirm_or_abort
+from datamasque_cli.errors import (
+    ErrorCode,
+    abort,
+    abort_api_error,
+    abort_if_invalid,
+    confirm_or_abort,
+    require_id_or_abort,
+)
 from datamasque_cli.fileio import (
-    FileKind,
     abort_if_too_large_for_sync_validation,
     read_text_or_abort,
     write_text_or_abort,
@@ -93,8 +98,8 @@ def get_config(
     client = get_client(profile)
     match = _collapse_to_one_or_abort(_find_by_name(client, name, config_type), name)
 
-    assert match.id is not None
-    full = client.get_discovery_config(match.id)
+    config_id = require_id_or_abort(match.id, f"discovery config '{name}'")
+    full = client.get_discovery_config(config_id)
 
     if is_yaml:
         typer.echo(full.yaml)
@@ -175,7 +180,7 @@ def create_config(
             hint="Pass --type database|file to pick which one to update.",
         )
 
-    yaml_content = read_text_or_abort(file, FileKind.DISCOVERY_CONFIG)
+    yaml_content = read_text_or_abort(file)
 
     config = DiscoveryConfig(name=name, yaml=yaml_content, config_type=resolved_type)
     client.create_or_update_discovery_config(config)
@@ -194,12 +199,12 @@ def delete_config(
     """Delete a discovery config by name."""
     client = get_client(profile)
     match = _collapse_to_one_or_abort(_find_by_name(client, name, config_type), name)
+    config_id = require_id_or_abort(match.id, f"discovery config '{name}'")
 
     if not is_confirmed:
         confirm_or_abort(f"Delete discovery config '{name}' ({match.config_type.value})?")
 
-    assert match.id is not None
-    client.delete_discovery_config_by_id_if_exists(match.id)
+    client.delete_discovery_config_by_id_if_exists(config_id)
     print_success(f"Discovery config '{name}' ({match.config_type.value}) deleted.")
 
 
@@ -216,11 +221,10 @@ def validate_config(
 
     Note that configs over 60 KiB validate asynchronously and cannot be validated here.
     """
-    yaml_content = read_text_or_abort(file, FileKind.DISCOVERY_CONFIG)
+    yaml_content = read_text_or_abort(file)
     abort_if_too_large_for_sync_validation(
         yaml_content,
         file,
-        FileKind.DISCOVERY_CONFIG,
         create_command=f"dm discover configs create --name <name> --type {config_type.value} -f {file}",
         status_command="dm discover configs status <name>",
     )
@@ -232,11 +236,7 @@ def validate_config(
     try:
         created = client.create_discovery_config(config)
     except DataMasqueApiError as exc:
-        abort_api_error(
-            f'Validation of discovery config "{file.name}" failed',
-            exc,
-            status_codes={HTTPStatus.BAD_REQUEST: ErrorCode.INVALID_INPUT},
-        )
+        abort_api_error(f'Validation of discovery config "{file.name}" failed', exc)
 
     try:
         errors = created.validation_error_details
@@ -278,5 +278,3 @@ def show_config_status(
 
     if match.is_valid is ValidationStatus.in_progress:
         print_info("Still validating — run this command again shortly.")
-    if match.is_valid is ValidationStatus.invalid:
-        raise SystemExit(ExitCode.INVALID_INPUT)

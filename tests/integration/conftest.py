@@ -13,6 +13,8 @@ from typer.testing import CliRunner
 from datamasque_cli.main import app
 
 _TERMINAL_STATUSES = frozenset({"finished", "finished_with_warnings", "failed", "cancelled"})
+_DISCOVERY_RULESET_PREFIX = "$auto_"
+_SCHEMA_DISCOVERY_RULESET = "$auto_schema_discovery"
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -272,6 +274,27 @@ def any_connection(runner: CliRunner) -> str:
 
 
 @pytest.fixture()
+def finished_non_schema_run(runner: CliRunner) -> int:
+    """Id of a finished run that schema discovery never ran on."""
+    result = runner.invoke(app, ["run", "list", "--limit", "100", "--json"])
+    if result.exit_code != 0:
+        pytest.skip("Could not list runs")
+    runs = json.loads(result.stdout)
+    scanned = {r["source"] for r in runs if str(r["ruleset"]).startswith(_SCHEMA_DISCOVERY_RULESET)}
+    finished = [
+        r
+        for r in runs
+        if r["status"] in _TERMINAL_STATUSES
+        and r["ruleset"]
+        and not str(r["ruleset"]).startswith(_DISCOVERY_RULESET_PREFIX)
+        and r["source"] not in scanned
+    ]
+    if not finished:
+        pytest.skip("No finished masking run on a connection without schema discovery")
+    return int(finished[0]["id"])
+
+
+@pytest.fixture()
 def database_connection(runner: CliRunner) -> str:
     """Name of a database-type source connection."""
     override = os.environ.get("DM_TEST_DB_CONN")
@@ -288,3 +311,18 @@ def database_connection(runner: CliRunner) -> str:
     if not match:
         pytest.skip("No database-type source connection on this instance; set DM_TEST_DB_CONN to override")
     return str(match)
+
+
+@pytest.fixture()
+def file_source_connection(runner: CliRunner) -> str:
+    """Name of a file-type source connection."""
+    override = os.environ.get("DM_TEST_FILE_CONN")
+    if override:
+        return override
+    result = runner.invoke(app, ["connections", "list", "--json"])
+    if result.exit_code != 0:
+        pytest.skip("Could not list connections to find a file source")
+    match = _pick_by_role(json.loads(result.stdout), {"source", "source+destination"}, ("MountedShare", "Azure", "S3"))
+    if not match:
+        pytest.skip("No file-type source connection on this instance; set DM_TEST_FILE_CONN to override")
+    return match

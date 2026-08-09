@@ -148,24 +148,22 @@ def test_validate_library_nonterminal_status_passes_through(mock_get_client: Mag
 
 
 @pytest.mark.parametrize(
-    ("is_valid", "errors", "expected_exit"),
+    ("is_valid", "errors"),
     [
-        (ValidationStatus.valid, [], ExitCode.OK),
+        (ValidationStatus.valid, []),
         (
             ValidationStatus.invalid,
             [ValidationErrorDetails(message="Unknown mask `nope`.")],
-            ExitCode.INVALID_INPUT,
         ),
     ],
     ids=["valid", "invalid"],
 )
 @patch(f"{MODULE}.get_client")
-def test_status_reports_state_and_exit_code(
+def test_status_reports_state(
     mock_get_client: MagicMock,
     runner: CliRunner,
     is_valid: ValidationStatus,
     errors: list[ValidationErrorDetails],
-    expected_exit: ExitCode,
 ) -> None:
     client = MagicMock()
     mock_get_client.return_value = client
@@ -175,7 +173,7 @@ def test_status_reports_state_and_exit_code(
 
     result = runner.invoke(app, ["libraries", "status", "lib", "--json"])
 
-    assert result.exit_code == expected_exit
+    assert result.exit_code == ExitCode.OK
     assert f'"status": "{is_valid.value}"' in result.stdout
     for error in errors:
         assert error.message in result.stdout

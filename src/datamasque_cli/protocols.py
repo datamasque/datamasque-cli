@@ -4,14 +4,24 @@ from typing import Protocol, TypedDict, runtime_checkable
 
 
 class Param(Protocol):
-    """The parameter attributes the catalog reads."""
+    """The attributes every parameter has."""
 
     name: str | None
-    param_type_name: str
-    opts: list[str]
     required: bool
+
+
+@runtime_checkable
+class Option(Param, Protocol):
+    """A parameter passed by flag."""
+
+    opts: list[str]
     help: str | None
     is_flag: bool
+
+
+@runtime_checkable
+class Argument(Param, Protocol):
+    """A positional parameter."""
 
 
 class Command(Protocol):

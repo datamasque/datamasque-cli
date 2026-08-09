@@ -172,7 +172,7 @@ def test_admin_install_does_not_swallow_non_401_errors(mock_get_unauth: MagicMoc
         ],
     )
 
-    assert result.exit_code == ExitCode.ERROR
+    assert result.exit_code == ExitCode.INVALID_INPUT
     assert "already complete" not in result.stderr
     assert "400 Bad Request" in result.stderr
     assert "Traceback" not in result.stderr

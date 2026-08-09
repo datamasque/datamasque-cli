@@ -23,7 +23,7 @@ from datamasque.client.models.connection import (
 
 from datamasque_cli.client import get_client
 from datamasque_cli.errors import ErrorCode, abort, abort_api_error, confirm_or_abort
-from datamasque_cli.fileio import FileKind, read_json_object_or_abort
+from datamasque_cli.fileio import read_json_object_or_abort
 from datamasque_cli.output import print_success, redact_sensitive_fields, render_output
 
 
@@ -207,7 +207,7 @@ def create_connection(
 
 def _create_from_file(client: DataMasqueClient, file: Path) -> None:
     """Create a connection from a JSON file."""
-    data = read_json_object_or_abort(file, FileKind.CONNECTION)
+    data = read_json_object_or_abort(file)
     raw_type = data.pop("type", "database")
     if not isinstance(raw_type, str):
         abort(f'{file}: "type" must be a string.', code=ErrorCode.INVALID_INPUT)
@@ -356,6 +356,7 @@ def update_connection(
         abort("Pass at least one field to update (e.g. --password, --host).", code=ErrorCode.INVALID_INPUT)
 
     payload = dict(updates)
+    # `dbpassword` is the server's field name for the database password on connection PATCH.
     if "password" in payload:
         payload["dbpassword"] = payload.pop("password")
 

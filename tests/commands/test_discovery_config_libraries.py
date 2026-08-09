@@ -263,20 +263,19 @@ def test_validate_warns_when_temp_library_cleanup_fails(
 
 
 @pytest.mark.parametrize(
-    ("is_valid", "validation_error", "expected_exit"),
+    ("is_valid", "validation_error"),
     [
-        (ValidationStatus.valid, None, ExitCode.OK),
-        (ValidationStatus.invalid, "duplicate label 'email'", ExitCode.INVALID_INPUT),
+        (ValidationStatus.valid, None),
+        (ValidationStatus.invalid, "duplicate label 'email'"),
     ],
     ids=["valid", "invalid"],
 )
 @patch(f"{MODULE}.get_client")
-def test_status_reports_state_and_exit_code(
+def test_status_reports_state(
     mock_get_client: MagicMock,
     runner: CliRunner,
     is_valid: ValidationStatus,
     validation_error: str | None,
-    expected_exit: ExitCode,
 ) -> None:
     client = MagicMock()
     mock_get_client.return_value = client
@@ -286,7 +285,7 @@ def test_status_reports_state_and_exit_code(
 
     result = runner.invoke(app, ["discover", "libraries", "status", "finance", "--json"])
 
-    assert result.exit_code == expected_exit
+    assert result.exit_code == ExitCode.OK
     assert f'"status": "{is_valid.value}"' in result.stdout
     if validation_error:
         assert validation_error in result.stdout

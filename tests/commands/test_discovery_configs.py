@@ -285,21 +285,20 @@ def test_validate_oversize_aborts_before_any_request(
 
 
 @pytest.mark.parametrize(
-    ("is_valid", "validation_error", "expected_exit"),
+    ("is_valid", "validation_error"),
     [
-        (ValidationStatus.valid, None, ExitCode.OK),
-        (ValidationStatus.invalid, "unknown label 'foo'", ExitCode.INVALID_INPUT),
-        (ValidationStatus.in_progress, None, ExitCode.OK),
+        (ValidationStatus.valid, None),
+        (ValidationStatus.invalid, "unknown label 'foo'"),
+        (ValidationStatus.in_progress, None),
     ],
     ids=["valid", "invalid", "in_progress"],
 )
 @patch(f"{MODULE}.get_client")
-def test_status_reports_state_and_exit_code(
+def test_status_reports_state(
     mock_get_client: MagicMock,
     runner: CliRunner,
     is_valid: ValidationStatus,
     validation_error: str | None,
-    expected_exit: ExitCode,
 ) -> None:
     client = MagicMock()
     mock_get_client.return_value = client
@@ -309,7 +308,7 @@ def test_status_reports_state_and_exit_code(
 
     result = runner.invoke(app, ["discover", "configs", "status", "emp", "--json"])
 
-    assert result.exit_code == expected_exit
+    assert result.exit_code == ExitCode.OK
     assert f'"status": "{is_valid.value}"' in result.stdout
     if validation_error:
         assert validation_error in result.stdout

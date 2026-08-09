@@ -6,10 +6,11 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
 from datamasque.client.exceptions import DataMasqueApiError
 from typer.testing import CliRunner
 
-from datamasque_cli.errors import ExitCode
+from datamasque_cli.errors import ErrorCode, ExitCode
 from datamasque_cli.main import app
 
 MODULE = "datamasque_cli.commands.ifm"
@@ -257,7 +258,10 @@ def test_mask_rejects_non_list_input(mock_get_client: MagicMock, runner: CliRunn
 
 
 @patch(f"{MODULE}.get_ifm_client")
-def test_mask_aborts_when_data_file_missing(mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path) -> None:
+def test_mask_aborts_when_data_file_missing(
+    mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DM_OUTPUT", "json")
     client = MagicMock()
     mock_get_client.return_value = client
 
@@ -266,8 +270,9 @@ def test_mask_aborts_when_data_file_missing(mock_get_client: MagicMock, runner: 
     result = runner.invoke(app, ["ifm", "mask", "p1", "--data", str(missing)])
 
     assert result.exit_code == ExitCode.NOT_FOUND
-    assert "Could not read mask input file" in result.stderr
-    assert "Traceback" not in result.stderr
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == ErrorCode.NOT_FOUND
+    assert payload["error"]["message"].startswith(f"Could not read {missing}: ")
     client.mask.assert_not_called()
 
 
