@@ -42,18 +42,18 @@ def _find_by_name(
     return matches
 
 
-def _collapse_to_one_or_abort(matches: list[DiscoveryConfig], name: str) -> DiscoveryConfig:
+def _require_single_matched_config_or_abort(matched_configs: list[DiscoveryConfig], name: str) -> DiscoveryConfig:
     """Return the single discovery config matching `name`, or abort asking for `--type`."""
-    if not matches:
+    if not matched_configs:
         abort(f"Discovery config '{name}' not found.", code=ErrorCode.NOT_FOUND)
-    if len(matches) > 1:
-        options = "\n  ".join(f"id={c.id} type={c.config_type.value}" for c in matches)
+    if len(matched_configs) > 1:
+        options = "\n  ".join(f"id={c.id} type={c.config_type.value}" for c in matched_configs)
         abort(
             f"Multiple discovery configs named '{name}':\n  {options}",
             code=ErrorCode.AMBIGUOUS,
             hint="Pass --type database|file to disambiguate.",
         )
-    return matches[0]
+    return matched_configs[0]
 
 
 @app.command("list")
@@ -96,7 +96,7 @@ def get_config(
 ) -> None:
     """Show a discovery config's details or YAML content."""
     client = get_client(profile)
-    match = _collapse_to_one_or_abort(_find_by_name(client, name, config_type), name)
+    match = _require_single_matched_config_or_abort(_find_by_name(client, name, config_type), name)
 
     config_id = require_id_or_abort(match.id, f"discovery config '{name}'")
     full = client.get_discovery_config(config_id)
@@ -198,7 +198,7 @@ def delete_config(
 ) -> None:
     """Delete a discovery config by name."""
     client = get_client(profile)
-    match = _collapse_to_one_or_abort(_find_by_name(client, name, config_type), name)
+    match = _require_single_matched_config_or_abort(_find_by_name(client, name, config_type), name)
     config_id = require_id_or_abort(match.id, f"discovery config '{name}'")
 
     if not is_confirmed:
@@ -265,7 +265,7 @@ def show_config_status(
 ) -> None:
     """Show a discovery config's validation status."""
     client = get_client(profile)
-    match = _collapse_to_one_or_abort(_find_by_name(client, name, config_type), name)
+    match = _require_single_matched_config_or_abort(_find_by_name(client, name, config_type), name)
 
     status = match.is_valid.value if match.is_valid else "unknown"
     data: dict[str, object] = {

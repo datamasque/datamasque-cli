@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+from datamasque_cli.errors import ErrorEnvelope
 from datamasque_cli.main import app
 
 _TERMINAL_STATUSES = frozenset({"finished", "finished_with_warnings", "failed", "cancelled"})
@@ -110,6 +111,15 @@ def fast_file_yaml(tmp_path: Path) -> Path:
         "                    value: NEVER\n"
     )
     return path
+
+
+def get_error_envelope_from_stderr(stderr: str) -> ErrorEnvelope:
+    """Return the `error` object from the JSON envelope the CLI wrote to stderr."""
+    for line in stderr.splitlines():
+        if line.startswith("{"):
+            error: ErrorEnvelope = json.loads(line)["error"]
+            return error
+    raise AssertionError(f"no error envelope on stderr: {stderr}")
 
 
 def wait_for_run(runner: CliRunner, run_id: int, timeout_s: float = 30.0) -> str:

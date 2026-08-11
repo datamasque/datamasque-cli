@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import json
+import textwrap
 from collections.abc import Mapping
 from enum import IntEnum, StrEnum
 from http import HTTPStatus
-from typing import Any, NoReturn, TypeVar
+from typing import NoReturn, NotRequired, TypedDict, TypeVar
 
 import typer
 from datamasque.client.exceptions import DataMasqueApiError
@@ -18,6 +19,14 @@ from pydantic import BaseModel, ConfigDict, JsonValue
 from datamasque_cli.output import console, is_agent_context, print_error
 
 AnyId = TypeVar("AnyId", DiscoveryConfigId, DiscoveryConfigLibraryId, RulesetId, RulesetLibraryId)
+
+
+class ErrorEnvelope(TypedDict):
+    """The `error` object the CLI emits on stderr in agent mode."""
+
+    code: str
+    message: str
+    hint: NotRequired[str]
 
 
 class ErrorCode(StrEnum):
@@ -68,7 +77,28 @@ EXIT_CODE_BY_ERROR: dict[ErrorCode, ExitCode] = {
 }
 
 
-def abort(message: str, *, code: ErrorCode = ErrorCode.ERROR, hint: str | None = None) -> NoReturn:
+def _print_details(details: list[str]) -> None:
+    """Print each detail on its own line, indented under the error it belongs to.
+
+    A detail can carry its own line breaks and indentation, such as an excerpt
+    with a caret under the offending column, so each line keeps both.
+    """
+    for detail in details:
+        for line in detail.splitlines():
+            indent = "  " + " " * (len(line) - len(line.lstrip()))
+            console.print(
+                textwrap.fill(line.strip(), width=console.width, initial_indent=indent, subsequent_indent=indent),
+                markup=False,
+            )
+
+
+def abort(
+    message: str,
+    *,
+    code: ErrorCode = ErrorCode.ERROR,
+    hint: str | None = None,
+    details: list[str] | None = None,
+) -> NoReturn:
     """Print an error and exit with the exit code mapped to `code`.
 
     In agent mode, emits a structured error envelope to stderr:
@@ -79,12 +109,14 @@ def abort(message: str, *, code: ErrorCode = ErrorCode.ERROR, hint: str | None =
     into the envelope's `error.code` field as the underlying string.
     """
     if is_agent_context():
-        envelope: dict[str, Any] = {"error": {"code": code, "message": message}}
+        full_message = f"{message}: {'; '.join(details)}" if details else message
+        error: ErrorEnvelope = {"code": code, "message": full_message}
         if hint:
-            envelope["error"]["hint"] = hint
-        typer.echo(json.dumps(envelope), err=True)
+            error["hint"] = hint
+        typer.echo(json.dumps({"error": error}), err=True)
     else:
-        print_error(message)
+        print_error(f"{message}:" if details else message)
+        _print_details(details or [])
         if hint:
             console.print(f"[dim]Hint: {hint}[/dim]")
     raise SystemExit(EXIT_CODE_BY_ERROR[code])
@@ -184,11 +216,18 @@ def abort_if_not_found(exc: DataMasqueApiError, subject: str) -> None:
         abort(f"{subject} not found.", code=ErrorCode.NOT_FOUND)
 
 
+def _format_validation_error(error: ValidationErrorDetails) -> str:
+    """Render one validation error as `message (line N, column M)`."""
+    column = f", column {error.column_number}" if error.column_number is not None else ""
+    location = f" (line {error.line_number}{column})" if error.line_number is not None else ""
+    return f"{error.message}{location}"
+
+
 def abort_if_invalid(subject: str, is_valid: ValidationStatus | None, errors: list[ValidationErrorDetails]) -> None:
-    """Print each server-side validation error for `subject` and exit, if it failed validation."""
+    """Abort with every server-side validation error for `subject`, if it failed validation."""
     if is_valid is not ValidationStatus.invalid and not errors:
         return
-    for error in errors:
-        location = f" (line {error.line_number})" if error.line_number is not None else ""
-        print_error(f"{error.message}{location}")
-    abort(f"{subject} is invalid.", code=ErrorCode.INVALID_INPUT)
+    details = [_format_validation_error(error) for error in errors]
+    if not details:
+        abort(f"{subject} is invalid.", code=ErrorCode.INVALID_INPUT)
+    abort(f"{subject} is invalid", code=ErrorCode.INVALID_INPUT, details=details)

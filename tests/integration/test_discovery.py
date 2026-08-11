@@ -8,7 +8,7 @@ from typer.testing import CliRunner
 
 from datamasque_cli.errors import ExitCode
 from datamasque_cli.main import app
-from tests.integration.conftest import create_discovery_config
+from tests.integration.conftest import create_discovery_config, wait_for_run
 
 pytestmark = pytest.mark.integration
 
@@ -67,6 +67,7 @@ def test_file_run_from_config_and_snapshot(
     snap_result = runner.invoke(app, ["discover", "config-snapshot", run_id, "-o", str(snapshot)])
     assert snap_result.exit_code == 0, snap_result.stdout
     assert snapshot.exists() and snapshot.read_text().strip()
+    wait_for_run(runner, int(run_id))
 
 
 def test_schema_run_from_config_and_snapshot(
@@ -92,6 +93,7 @@ def test_schema_run_from_config_and_snapshot(
     snap_result = runner.invoke(app, ["discover", "config-snapshot", run_id, "-o", str(snapshot)])
     assert snap_result.exit_code == 0, snap_result.stdout
     assert snapshot.exists() and snapshot.read_text().strip()
+    wait_for_run(runner, int(run_id))
 
 
 def test_schema_results_on_a_non_schema_run_reports_the_server_reason(

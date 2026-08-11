@@ -8,10 +8,10 @@ from pathlib import Path
 import typer
 from datamasque.client.exceptions import DataMasqueApiError
 from datamasque.client.models.discovery_config_library import DiscoveryConfigLibrary
-from datamasque.client.models.status import ValidationStatus
+from datamasque.client.models.status import ValidationErrorDetails
 
 from datamasque_cli.client import get_client
-from datamasque_cli.errors import ErrorCode, abort, abort_api_error, confirm_or_abort
+from datamasque_cli.errors import ErrorCode, abort, abort_api_error, abort_if_invalid, confirm_or_abort
 from datamasque_cli.fileio import read_text_or_abort
 from datamasque_cli.output import print_success, print_warning, render_output
 
@@ -157,11 +157,8 @@ def validate_library(
         abort_api_error(f'Validation of discovery config library "{file.name}" failed', exc)
 
     try:
-        if created.is_valid is ValidationStatus.invalid:
-            abort(
-                f'Discovery config library "{file.name}" is invalid: {created.validation_error}',
-                code=ErrorCode.INVALID_INPUT,
-            )
+        errors = [ValidationErrorDetails(message=created.validation_error)] if created.validation_error else []
+        abort_if_invalid(f'Discovery config library "{file.name}"', created.is_valid, errors)
 
         status = created.is_valid.value if created.is_valid else "unknown"
         print_success(f'Discovery config library "{file.name}" validation status: {status}')

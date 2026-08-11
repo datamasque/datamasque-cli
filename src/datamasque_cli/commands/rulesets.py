@@ -47,18 +47,18 @@ def _find_by_name(
     return matches
 
 
-def _collapse_to_one_or_abort(matches: list[Ruleset], name: str) -> Ruleset:
+def _require_single_matched_ruleset_or_abort(matched_rulesets: list[Ruleset], name: str) -> Ruleset:
     """Return the single ruleset matching `name`, or abort asking for `--type`."""
-    if not matches:
+    if not matched_rulesets:
         abort(f"Ruleset '{name}' not found.", code=ErrorCode.NOT_FOUND)
-    if len(matches) > 1:
-        options = "\n  ".join(f"id={rs.id} type={rs.ruleset_type.value}" for rs in matches)
+    if len(matched_rulesets) > 1:
+        options = "\n  ".join(f"id={rs.id} type={rs.ruleset_type.value}" for rs in matched_rulesets)
         abort(
             f"Multiple rulesets named '{name}':\n  {options}",
             code=ErrorCode.AMBIGUOUS,
             hint="Pass --type database|file to disambiguate.",
         )
-    return matches[0]
+    return matched_rulesets[0]
 
 
 @app.command("list")
@@ -98,7 +98,7 @@ def get_ruleset(
 ) -> None:
     """Show a ruleset's details or YAML content."""
     client = get_client(profile)
-    match = _collapse_to_one_or_abort(_find_by_name(client, name, ruleset_type), name)
+    match = _require_single_matched_ruleset_or_abort(_find_by_name(client, name, ruleset_type), name)
 
     # `list_rulesets` omits the YAML body for performance; fetch the single ruleset
     # to populate `yaml` via the Ruleset pydantic model's `config_yaml` alias.
@@ -178,7 +178,7 @@ def delete_ruleset(
 ) -> None:
     """Delete a ruleset by name."""
     client = get_client(profile)
-    match = _collapse_to_one_or_abort(_find_by_name(client, name, ruleset_type), name)
+    match = _require_single_matched_ruleset_or_abort(_find_by_name(client, name, ruleset_type), name)
     ruleset_id = require_id_or_abort(match.id, f"ruleset '{name}'")
 
     if not is_confirmed:
@@ -323,7 +323,7 @@ def show_ruleset_status(
 ) -> None:
     """Show a ruleset's validation status."""
     client = get_client(profile)
-    match = _collapse_to_one_or_abort(_find_by_name(client, name, ruleset_type), name)
+    match = _require_single_matched_ruleset_or_abort(_find_by_name(client, name, ruleset_type), name)
 
     status = match.is_valid.value if match.is_valid else "unknown"
     errors = match.validation_errors or []

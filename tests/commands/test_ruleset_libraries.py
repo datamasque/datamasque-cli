@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from http import HTTPStatus
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -130,6 +131,33 @@ def test_validate_library_invalid_prints_errors_and_exits_4(mock_get_client: Mag
     assert "unknown mask type 'from_nowhere'" in result.stderr
     assert "line 3" in result.stderr
     assert "duplicate anchor 'email'" in result.stderr
+
+
+@patch(f"{MODULE}.get_client")
+def test_validate_library_puts_every_reason_in_the_agent_envelope(
+    mock_get_client: MagicMock, runner: CliRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DM_OUTPUT", "json")
+    client = MagicMock()
+    mock_get_client.return_value = client
+    client.get_ruleset_library_by_name.return_value = _make_ruleset_library("my-lib")
+    client.validate_ruleset_library.return_value = _make_ruleset_library(
+        "my-lib",
+        is_valid=ValidationStatus.invalid,
+        validation_errors=[
+            ValidationErrorDetails(message="unknown mask type 'from_nowhere'", line_number=3, column_number=5),
+            ValidationErrorDetails(message="duplicate anchor 'email'"),
+        ],
+    )
+
+    result = runner.invoke(app, ["libraries", "validate", "my-lib"])
+
+    assert result.exit_code == ExitCode.INVALID_INPUT
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_input"
+    assert payload["error"]["message"] == (
+        "Library 'my-lib' is invalid: unknown mask type 'from_nowhere' (line 3, column 5); duplicate anchor 'email'"
+    )
 
 
 @patch(f"{MODULE}.get_client")

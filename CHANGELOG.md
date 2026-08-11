@@ -5,8 +5,8 @@
 ### Added
 - Support for datamasque-python 1.2.2.
   - `dm discover schema-results` handles matches with no label.
-  - `dm rulesets validate` and `dm libraries validate` print validation
-    errors for invalid YAML.
+  - `dm rulesets validate` and `dm libraries validate` report each validation
+    error for invalid YAML, with its line and column.
 - Support for Configurable Discovery:
   - `dm discover configs` — list, get, defaults, create, delete, validate,
     and status for discovery configs (`database` or `file`).

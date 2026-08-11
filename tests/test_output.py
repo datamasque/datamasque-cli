@@ -7,12 +7,14 @@ from unittest.mock import MagicMock
 import pytest
 from datamasque.client.exceptions import DataMasqueApiError
 from datamasque.client.models.ruleset import RulesetId
+from datamasque.client.models.status import ValidationErrorDetails, ValidationStatus
 
 from datamasque_cli.errors import (
     EXIT_CODE_BY_ERROR,
     ErrorCode,
     ExitCode,
     abort,
+    abort_if_invalid,
     extract_server_error_reason,
     require_id_or_abort,
 )
@@ -178,6 +180,95 @@ def test_abort_human_mode_prints_red_error(monkeypatch: pytest.MonkeyPatch, caps
     assert "nope" in captured.err
     # In human mode we don't dump JSON.
     assert "{" not in captured.err
+
+
+def test_abort_folds_details_into_the_envelope_message(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("DM_OUTPUT", "json")
+    with pytest.raises(SystemExit):
+        abort(
+            "Ruleset 'rs.yaml' is invalid",
+            code=ErrorCode.INVALID_INPUT,
+            details=["unknown mask type (line 7)", "tasks must not be empty"],
+        )
+    payload = json.loads(capsys.readouterr().err)
+    assert payload["error"]["message"] == (
+        "Ruleset 'rs.yaml' is invalid: unknown mask type (line 7); tasks must not be empty"
+    )
+
+
+def test_abort_prints_one_detail_per_line_in_human_mode(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("DM_OUTPUT", "table")
+    with pytest.raises(SystemExit):
+        abort(
+            "Ruleset 'rs.yaml' is invalid",
+            code=ErrorCode.INVALID_INPUT,
+            details=["unknown mask type (line 7)", "tasks must not be empty"],
+        )
+    lines = [line.rstrip() for line in capsys.readouterr().err.splitlines() if line.strip()]
+    assert lines == [
+        "Error: Ruleset 'rs.yaml' is invalid:",
+        "  unknown mask type (line 7)",
+        "  tasks must not be empty",
+    ]
+
+
+def test_abort_keeps_the_shape_of_a_multi_line_detail(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("DM_OUTPUT", "table")
+    detail = "unknown property on line 3, column 1:\n    garbage: true\n    ^ (line: 3)"
+
+    with pytest.raises(SystemExit):
+        abort("Library 'lib.yaml' is invalid", code=ErrorCode.INVALID_INPUT, details=[detail])
+
+    lines = [line.rstrip() for line in capsys.readouterr().err.splitlines() if line.strip()]
+    assert lines == [
+        "Error: Library 'lib.yaml' is invalid:",
+        "  unknown property on line 3, column 1:",
+        "      garbage: true",
+        "      ^ (line: 3)",
+    ]
+
+
+def test_abort_if_invalid_returns_when_validation_passed() -> None:
+    abort_if_invalid("Ruleset 'rs.yaml'", ValidationStatus.valid, [])
+
+
+def test_abort_if_invalid_reports_every_error_with_its_position(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("DM_OUTPUT", "json")
+    errors = [
+        ValidationErrorDetails(message="unknown property `badkey5`", line_number=11, column_number=13),
+        ValidationErrorDetails(message="unknown mask type", line_number=7),
+        ValidationErrorDetails(message="tasks must not be empty"),
+    ]
+
+    with pytest.raises(SystemExit) as exc_info:
+        abort_if_invalid("Ruleset 'rs.yaml' (database)", ValidationStatus.invalid, errors)
+
+    assert exc_info.value.code == ExitCode.INVALID_INPUT
+    assert json.loads(capsys.readouterr().err)["error"]["message"] == (
+        "Ruleset 'rs.yaml' (database) is invalid: "
+        "unknown property `badkey5` (line 11, column 13); "
+        "unknown mask type (line 7); "
+        "tasks must not be empty"
+    )
+
+
+def test_abort_if_invalid_without_errors_still_aborts(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("DM_OUTPUT", "json")
+    with pytest.raises(SystemExit) as exc_info:
+        abort_if_invalid("Ruleset 'rs.yaml'", ValidationStatus.invalid, [])
+
+    assert exc_info.value.code == ExitCode.INVALID_INPUT
+    assert json.loads(capsys.readouterr().err)["error"]["message"] == "Ruleset 'rs.yaml' is invalid."
 
 
 @pytest.mark.parametrize(

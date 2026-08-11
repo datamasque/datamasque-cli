@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from http import HTTPStatus
 from pathlib import Path
 from types import SimpleNamespace
@@ -241,6 +242,27 @@ def test_validate_invalid_exits_4(mock_get_client: MagicMock, runner: CliRunner,
     assert result.exit_code == ExitCode.INVALID_INPUT
     assert "duplicate label 'email'" in result.stderr
     client.delete_discovery_config_library_by_id_if_exists.assert_called_once_with("lib-uuid")
+
+
+@patch(f"{MODULE}.get_client")
+def test_validate_puts_the_reason_in_the_agent_envelope(
+    mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DM_OUTPUT", "json")
+    client = MagicMock()
+    mock_get_client.return_value = client
+    client.create_discovery_config_library.return_value = _make_library(
+        "finance", is_valid=ValidationStatus.invalid, validation_error="duplicate label 'email'"
+    )
+    lib = tmp_path / "lib.yaml"
+    lib.write_text("labels: []\n")
+
+    result = runner.invoke(app, ["discover", "libraries", "validate", "-f", str(lib)])
+
+    assert result.exit_code == ExitCode.INVALID_INPUT
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_input"
+    assert payload["error"]["message"] == ('Discovery config library "lib.yaml" is invalid: duplicate label \'email\'')
 
 
 @patch(f"{MODULE}.get_client")

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -340,6 +341,29 @@ def test_validate_sync_invalid_prints_errors_and_cleans_up(
     assert "line 7" in result.stderr
     assert "tasks must not be empty" in result.stderr
     client.delete_ruleset_by_id_if_exists.assert_called_once_with(99)
+
+
+@patch(f"{MODULE}.get_client")
+def test_validate_puts_every_reason_in_the_agent_envelope(
+    mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DM_OUTPUT", "json")
+    client = MagicMock()
+    mock_get_client.return_value = client
+    client.create_or_update_ruleset.return_value = _make_ruleset_with_status(
+        ValidationStatus.invalid,
+        [ValidationErrorDetails(message="unknown mask type 'from_nowhere'", line_number=7, column_number=3)],
+    )
+
+    yaml_file = tmp_path / "rs.yaml"
+    yaml_file.write_text("tasks: []\n")
+
+    result = runner.invoke(app, ["rulesets", "validate", "--file", str(yaml_file), "--type", "database"])
+
+    assert result.exit_code == ExitCode.INVALID_INPUT
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_input"
+    assert "unknown mask type 'from_nowhere' (line 7, column 3)" in payload["error"]["message"]
 
 
 @pytest.mark.parametrize("initial_status", [None, ValidationStatus.in_progress])

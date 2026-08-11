@@ -12,6 +12,7 @@ from tests.integration.conftest import (
     DISCOVERY_TEST_NAMESPACE,
     create_discovery_config,
     create_discovery_config_library,
+    get_error_envelope_from_stderr,
 )
 
 pytestmark = pytest.mark.integration
@@ -48,12 +49,19 @@ def test_config_validate_accepts_default_config(runner: CliRunner, db_discovery_
     assert result.exit_code == 0, result.stdout
 
 
-def test_config_validate_rejects_invalid_yaml(runner: CliRunner, invalid_discovery_yaml: Path) -> None:
+def test_config_validate_rejects_invalid_yaml(
+    runner: CliRunner, invalid_discovery_yaml: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DM_OUTPUT", "json")
+
     result = runner.invoke(
         app, ["discover", "configs", "validate", "-f", str(invalid_discovery_yaml), "--type", "database"]
     )
+
     assert result.exit_code == ExitCode.INVALID_INPUT
-    assert "invalid" in result.stderr.lower()
+    error = get_error_envelope_from_stderr(result.stderr)
+    assert error["code"] == "invalid_input"
+    assert error["message"].startswith(f'Discovery config "{invalid_discovery_yaml.name}" is invalid: ')
 
 
 def test_config_same_name_coexists_across_types(
@@ -133,9 +141,17 @@ def test_library_namespace_is_isolated(
     assert default_namespace.exit_code == ExitCode.NOT_FOUND
 
 
-def test_library_validate_rejects_invalid_yaml(runner: CliRunner, invalid_discovery_yaml: Path) -> None:
+def test_library_validate_rejects_invalid_yaml(
+    runner: CliRunner, invalid_discovery_yaml: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DM_OUTPUT", "json")
+
     result = runner.invoke(app, ["discover", "libraries", "validate", "-f", str(invalid_discovery_yaml)])
+
     assert result.exit_code == ExitCode.INVALID_INPUT
+    error = get_error_envelope_from_stderr(result.stderr)
+    assert error["code"] == "invalid_input"
+    assert error["message"].startswith(f'Discovery config library "{invalid_discovery_yaml.name}" is invalid: ')
 
 
 def test_library_delete_refuses_while_imported_then_force_succeeds(
