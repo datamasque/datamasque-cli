@@ -160,7 +160,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "datamasque-python", specifier = ">=1.2.2,<2" },
+    { name = "datamasque-python", specifier = ">=1.2.3,<2" },
     { name = "pydantic", specifier = ">=2.5,<3" },
     { name = "tomli-w", specifier = ">=1.0.0" },
     { name = "typer", specifier = ">=0.15.0" },
@@ -176,15 +176,15 @@ dev = [
 
 [[package]]
 name = "datamasque-python"
-version = "1.2.2"
+version = "1.2.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
     { name = "requests" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/be/c0/70ecb82cd6f3672bd1a582ff422a2edbb9cf26dc861bacf688df6c489a86/datamasque_python-1.2.2.tar.gz", hash = "sha256:72244e318d32871a7b4a22da5b88592979c3ec0f38d323b91001ff7335eda006", size = 206865, upload-time = "2026-07-31T01:19:05.916Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/09/99/8e4f8d27c33ac727b7f7bddec495567d2c656ddbd3790c5851b66da0e483/datamasque_python-1.2.3.tar.gz", hash = "sha256:695e0914775a16cad4d7d132041dc02e8425f6e3d65527434e79549d464b3d2e", size = 208454, upload-time = "2026-08-12T03:21:57.916Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b8/4f/472bfaed98a67bdf25ffd5a9590c6c5b7ca379c50aea494bb53496acc4ee/datamasque_python-1.2.2-py3-none-any.whl", hash = "sha256:d324f71108b179422613535111dbfbefad53a8ed4e388bcdfe61da041d051f8b", size = 76315, upload-time = "2026-07-31T01:19:04.628Z" },
+    { url = "https://files.pythonhosted.org/packages/2c/9e/7c0ba43d51fa3dad934c5d90aaed4abc4d5cde6f68781bec6d673513d04a/datamasque_python-1.2.3-py3-none-any.whl", hash = "sha256:f26f766b7211166219812a614c56cc2fee49cfea74a955beb81464c6454aea81", size = 77001, upload-time = "2026-08-12T03:21:56.526Z" },
 ]
 
 [[package]]
