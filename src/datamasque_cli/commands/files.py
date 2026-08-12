@@ -8,7 +8,8 @@ import typer
 from datamasque.client.models.files import DataMasqueFile, SnowflakeKeyFile
 
 from datamasque_cli.client import get_client
-from datamasque_cli.output import ErrorCode, abort, print_success, render_output
+from datamasque_cli.errors import ErrorCode, abort, confirm_or_abort
+from datamasque_cli.output import print_success, render_output
 
 app = typer.Typer(help="Manage uploaded files (Oracle wallets, Snowflake keys).", no_args_is_help=True)
 
@@ -57,7 +58,7 @@ def delete_file(
         abort(f"File '{name}' ({file_type}) not found.", code=ErrorCode.NOT_FOUND)
 
     if not is_confirmed:
-        typer.confirm(f"Delete file '{name}' ({file_type})?", abort=True)
+        confirm_or_abort(f"Delete file '{name}' ({file_type})?")
 
     client.delete_file_if_exists(match)
     print_success(f"File '{name}' deleted.")

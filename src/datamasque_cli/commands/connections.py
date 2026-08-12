@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import json
 from enum import StrEnum
 from pathlib import Path
 
 import typer
 from datamasque.client import DataMasqueClient
+from datamasque.client.exceptions import DataMasqueApiError
 from datamasque.client.models.connection import (
     AzureConnectionConfig,
     ConnectionConfig,
@@ -22,7 +22,9 @@ from datamasque.client.models.connection import (
 )
 
 from datamasque_cli.client import get_client
-from datamasque_cli.output import ErrorCode, abort, print_success, redact_sensitive_fields, render_output
+from datamasque_cli.errors import ErrorCode, abort, abort_api_error, confirm_or_abort
+from datamasque_cli.fileio import read_json_object_or_abort
+from datamasque_cli.output import print_success, redact_sensitive_fields, render_output
 
 
 class ConnectionType(StrEnum):
@@ -205,8 +207,11 @@ def create_connection(
 
 def _create_from_file(client: DataMasqueClient, file: Path) -> None:
     """Create a connection from a JSON file."""
-    data = json.loads(file.read_text())
-    conn_type = _parse_connection_type(data.pop("type", "database"))
+    data = read_json_object_or_abort(file)
+    raw_type = data.pop("type", "database")
+    if not isinstance(raw_type, str):
+        abort(f'{file}: "type" must be a string.', code=ErrorCode.INVALID_INPUT)
+    conn_type = _parse_connection_type(raw_type)
 
     # Convert db_type string to enum for database connections.
     if conn_type is ConnectionType.DATABASE and "database_type" in data:
@@ -298,7 +303,10 @@ def test_connection(
     if match is None:
         abort(f"Connection '{name}' not found.", code=ErrorCode.NOT_FOUND)
 
-    response = client.make_request("POST", f"/api/connections/{match.id}/test/", data={})
+    try:
+        response = client.make_request("POST", f"/api/connections/{match.id}/test/", data={})
+    except DataMasqueApiError as exc:
+        abort_api_error(f"Connection '{match.name}' is not reachable", exc)
     body = response.json() if response.content else {}
     warning = body.get("message") if isinstance(body, dict) else None
 
@@ -347,7 +355,12 @@ def update_connection(
     if not updates:
         abort("Pass at least one field to update (e.g. --password, --host).", code=ErrorCode.INVALID_INPUT)
 
-    client.make_request("PATCH", f"/api/connections/{match.id}/", data=updates)
+    payload = dict(updates)
+    # `dbpassword` is the server's field name for the database password on connection PATCH.
+    if "password" in payload:
+        payload["dbpassword"] = payload.pop("password")
+
+    client.make_request("PATCH", f"/api/connections/{match.id}/", data=payload)
     print_success(f"Connection '{match.name}' updated: {', '.join(updates)}.")
 
 
@@ -363,7 +376,7 @@ def delete_connection(
         abort(f"Connection '{name}' not found.", code=ErrorCode.NOT_FOUND)
 
     if not is_confirmed:
-        typer.confirm(f"Delete connection '{name}'?", abort=True)
+        confirm_or_abort(f"Delete connection '{name}'?")
 
     client.delete_connection_by_name_if_exists(name)
     print_success(f"Connection '{name}' deleted.")

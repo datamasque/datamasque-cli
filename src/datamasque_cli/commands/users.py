@@ -6,7 +6,8 @@ import typer
 from datamasque.client.models.user import User, UserRole
 
 from datamasque_cli.client import get_client
-from datamasque_cli.output import ErrorCode, abort, print_success, render_output
+from datamasque_cli.errors import ErrorCode, abort, confirm_or_abort
+from datamasque_cli.output import print_success, render_output
 
 app = typer.Typer(help="Manage users.", no_args_is_help=True)
 
@@ -63,7 +64,7 @@ def delete_user(
         abort(f"User '{username}' not found.", code=ErrorCode.NOT_FOUND)
 
     if not is_confirmed:
-        typer.confirm(f"Delete user '{username}'?", abort=True)
+        confirm_or_abort(f"Delete user '{username}'?")
 
     client.delete_user_by_username_if_exists(username)
     print_success(f"User '{username}' deleted.")

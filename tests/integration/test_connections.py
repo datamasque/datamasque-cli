@@ -5,6 +5,7 @@ import json
 import pytest
 from typer.testing import CliRunner
 
+from datamasque_cli.errors import ExitCode
 from datamasque_cli.main import app
 
 pytestmark = pytest.mark.integration
@@ -13,7 +14,7 @@ pytestmark = pytest.mark.integration
 def test_connection_test_aborts_on_missing_connection(runner: CliRunner) -> None:
     result = runner.invoke(app, ["connections", "test", "dm_int_never_exists_xyz"])
 
-    assert result.exit_code != 0
+    assert result.exit_code == ExitCode.NOT_FOUND
     assert "not found" in result.stderr.lower()
 
 
@@ -47,5 +48,5 @@ def test_connection_update_aborts_with_no_fields(runner: CliRunner, connection_n
 
     result = runner.invoke(app, ["connections", "update", connection_name])
 
-    assert result.exit_code != 0
+    assert result.exit_code == ExitCode.INVALID_INPUT
     assert "at least one field" in result.stderr.lower()

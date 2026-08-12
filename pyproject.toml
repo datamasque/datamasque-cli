@@ -1,6 +1,6 @@
 [project]
 name = "datamasque-cli"
-version = "1.4.0"
+version = "1.5.0"
 description = "Official command-line interface for the DataMasque data-masking platform."
 authors = [
     { name = "DataMasque Ltd" },
@@ -12,7 +12,8 @@ requires-python = ">=3.11"
 dependencies = [
     "typer>=0.15.0",
     "tomli-w>=1.0.0",
-    "datamasque-python>=1.0.0,<2",
+    "datamasque-python>=1.2.3,<2",
+    "pydantic>=2.5,<3",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -37,7 +38,7 @@ Repository = "https://github.com/datamasque/datamasque-cli"
 Issues = "https://github.com/datamasque/datamasque-cli/issues"
 
 [project.scripts]
-dm = "datamasque_cli.main:app"
+dm = "datamasque_cli.main:main"
 
 [dependency-groups]
 dev = [

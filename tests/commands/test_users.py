@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 
 from typer.testing import CliRunner
 
+from datamasque_cli.errors import ExitCode
 from datamasque_cli.main import app
 
 MODULE = "datamasque_cli.commands.users"
@@ -30,5 +31,5 @@ def test_delete_user_aborts_when_missing(mock_get_client: MagicMock, runner: Cli
 
     result = runner.invoke(app, ["users", "delete", "nope", "--yes"])
 
-    assert result.exit_code != 0
+    assert result.exit_code == ExitCode.NOT_FOUND
     client.delete_user_by_username_if_exists.assert_not_called()

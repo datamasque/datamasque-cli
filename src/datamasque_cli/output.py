@@ -14,8 +14,7 @@ from __future__ import annotations
 import json
 import os
 import sys
-from enum import StrEnum
-from typing import Any, NoReturn
+from typing import Any
 
 import typer
 from rich.console import Console
@@ -44,40 +43,6 @@ stdout_console = Console(theme=_DM_THEME)
 # `redact_sensitive_fields`. Matches datamasque-python's SENSITIVE_REQUEST_DATA_KEYS.
 _SENSITIVE_FIELD_SUBSTRINGS = ("password", "secret", "token", "key", "credential")
 _REDACTED = "<redacted>"
-
-
-class ErrorCode(StrEnum):
-    """Stable, machine-readable error categories.
-
-    StrEnum members are str subclasses, so the value flows directly into
-    the JSON envelope's `error.code` field via `json.dumps`. Pair with
-    `EXIT_CODES` to map to a process exit status.
-    """
-
-    ERROR = "error"
-    NOT_FOUND = "not_found"
-    INVALID_INPUT = "invalid_input"
-    AMBIGUOUS = "ambiguous"
-    AUTH_REQUIRED = "auth_required"
-    AUTH_FAILED = "auth_failed"
-    CONFLICT = "conflict"
-    TRANSPORT_ERROR = "transport_error"
-
-
-# Exit-code taxonomy for `abort()`. Stable across minor versions — agents can
-# branch on these to decide whether to retry, prompt the user, or give up.
-# `2` is intentionally skipped because typer/click already uses it for CLI
-# usage errors (unknown flag, missing required arg).
-EXIT_CODES: dict[ErrorCode, int] = {
-    ErrorCode.ERROR: 1,
-    ErrorCode.NOT_FOUND: 3,
-    ErrorCode.INVALID_INPUT: 4,
-    ErrorCode.AMBIGUOUS: 5,
-    ErrorCode.AUTH_REQUIRED: 6,
-    ErrorCode.AUTH_FAILED: 7,
-    ErrorCode.CONFLICT: 8,
-    ErrorCode.TRANSPORT_ERROR: 9,
-}
 
 
 def redact_sensitive_fields(data: dict[str, Any]) -> dict[str, Any]:
@@ -226,25 +191,3 @@ def render_output(
         print_kv(data, title=title)
     else:
         typer.echo(data)
-
-
-def abort(message: str, *, code: ErrorCode = ErrorCode.ERROR, hint: str | None = None) -> NoReturn:
-    """Print an error and exit with the exit code mapped to `code`.
-
-    In agent mode, emits a structured error envelope to stderr:
-        {"error": {"code": "...", "message": "...", "hint": "..."}}
-    In human mode, prints a red 'Error: …' line plus an optional hint.
-
-    `code` is an `ErrorCode` member (StrEnum), so it serializes directly
-    into the envelope's `error.code` field as the underlying string.
-    """
-    if is_agent_context():
-        envelope: dict[str, Any] = {"error": {"code": code, "message": message}}
-        if hint:
-            envelope["error"]["hint"] = hint
-        typer.echo(json.dumps(envelope), err=True)
-    else:
-        print_error(message)
-        if hint:
-            console.print(f"[dim]Hint: {hint}[/dim]")
-    raise SystemExit(EXIT_CODES[code])

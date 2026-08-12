@@ -138,17 +138,16 @@ dm connections delete <name>                    # Delete a connection
 ### Rulesets
 
 ```console
-dm rulesets list                                  # List all rulesets
-dm rulesets list --type file                      # Filter by type
-dm rulesets get <name>                            # Show ruleset details
+dm rulesets list [--type database|file]           # List all rulesets, or filter by type
+dm rulesets get <name> [--type database|file]     # Show details; --type disambiguates same-name rulesets
 dm rulesets get <name> --yaml                     # Print raw YAML only
-dm rulesets get <name> --type file                # Disambiguate same-name rulesets
-dm rulesets create --name <n> --file rules.yaml   # Create/update (type auto-detected from YAML)
-dm rulesets create --name <n> --file rules.yaml --type file  # Force a type
-dm rulesets delete <name> [--type file|database]  # Delete a ruleset
+dm rulesets create --name <n> --file rules.yaml   # Create/update (type read from the existing ruleset)
+dm rulesets create --name <n> --file rules.yaml [--type database|file]  # Force a type
+dm rulesets delete <name> [--type database|file]  # Delete a ruleset
 dm rulesets generate --file request.json          # Generate from schema
 dm rulesets generate --file req.json -o out.yaml  # Generate to file
-dm rulesets validate --file rules.yaml            # Validate against server
+dm rulesets validate --file rules.yaml --type database|file  # Validate against server (YAML under 60 KiB)
+dm rulesets status <name>                         # Validation status; poll after creating YAML of 60 KiB+
 dm rulesets export-bundle -o bundle.zip           # Export rulesets + libraries + seeds
 dm rulesets import-bundle --file bundle.zip       # Import a previously exported bundle
 dm rulesets import-bundle -f bundle.zip --overwrite-rulesets --overwrite-libraries  # Replace existing entries
@@ -164,6 +163,7 @@ dm libraries create --name <n> --file lib.yaml    # Create/update from file
 dm libraries create --name <n> --file lib.yaml --namespace pii  # With namespace
 dm libraries delete <name>                        # Delete a library
 dm libraries validate <name>                      # Re-validate against current server schema
+dm libraries status <name>                        # Validation status; poll after creating YAML of 60 KiB+
 dm libraries usage <name>                         # Show rulesets using it
 ```
 
@@ -216,11 +216,42 @@ dm users delete <username>                      # Delete a user
 ### Discovery
 
 ```console
-dm discover schema <connection>                 # Start a schema-discovery run
-dm discover schema-results <run-id>             # List schema-discovery results once the run finishes
-dm discover sdd-report <run-id>                 # Sensitive data discovery report
-dm discover db-report <run-id>                  # Database discovery CSV
-dm discover file-report <run-id>                # File discovery report
+dm discover schema <connection>                      # Schema discovery (built-in keyword-driven)
+dm discover schema <connection> --config <name>      # Schema discovery from a saved database config
+dm discover schema <connection> --json               # {"id": <run-id>}
+dm discover schema-results <run-id>                  # List schema-discovery results once the run finishes
+dm discover file <connection>                        # File data discovery (built-in keyword-driven)
+dm discover file <connection> --config <name>        # File data discovery from a saved file config
+dm discover file <connection> --json                 # {"id": <run-id>}
+dm discover sdd-report <run-id>                      # Sensitive data discovery report
+dm discover db-report <run-id>                       # Database discovery CSV
+dm discover file-report <run-id>                     # File discovery report
+dm discover config-snapshot <run-id> -o used.yaml    # Download the discovery config a run actually used
+```
+
+#### Discovery configs
+
+```console
+dm discover configs list [--type database|file]                       # List configs
+dm discover configs get <name> [--type database|file] [--yaml]        # Show details or raw YAML
+dm discover configs defaults [--type database|file] -o cfg.yaml       # Built-in default as a starting point
+dm discover configs create --name <n> -f cfg.yaml [--type database|file]  # Create/update from YAML
+dm discover configs delete <name> [--type database|file]              # Delete a config
+dm discover configs validate -f cfg.yaml --type database|file         # Validate against server (YAML under 60 KiB)
+dm discover configs status <name> [--type database|file]              # Validation status; poll after creating YAML of 60 KiB+
+```
+
+#### Discovery config libraries
+
+The same library can be imported by both database and file discovery configs.
+
+```console
+dm discover libraries list
+dm discover libraries get <name> [--namespace org] [--yaml]
+dm discover libraries create --name <n> --namespace org -f lib.yaml
+dm discover libraries delete <name> [--namespace org] [--force]    # --force if imported by configs
+dm discover libraries validate -f lib.yaml
+dm discover libraries status <name> [--namespace org]
 ```
 
 ### Seeds
@@ -308,6 +339,8 @@ empty on failure):
 |    7 | auth_failed       | credentials rejected by server                 |
 |    8 | conflict          | operation rejected by server state             |
 |    9 | transport_error   | network or TLS failure                         |
+|   10 | cancelled         | you answered no to a confirmation prompt       |
+|   11 | forbidden         | user lacks permission for the operation        |
 
 Exit codes are stable across minor versions. The `error.code` string in the
 JSON envelope mirrors these names.

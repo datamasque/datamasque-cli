@@ -10,9 +10,12 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+from datamasque_cli.errors import ErrorEnvelope
 from datamasque_cli.main import app
 
 _TERMINAL_STATUSES = frozenset({"finished", "finished_with_warnings", "failed", "cancelled"})
+_DISCOVERY_RULESET_PREFIX = "$auto_"
+_SCHEMA_DISCOVERY_RULESET = "$auto_schema_discovery"
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -110,6 +113,15 @@ def fast_file_yaml(tmp_path: Path) -> Path:
     return path
 
 
+def get_error_envelope_from_stderr(stderr: str) -> ErrorEnvelope:
+    """Return the `error` object from the JSON envelope the CLI wrote to stderr."""
+    for line in stderr.splitlines():
+        if line.startswith("{"):
+            error: ErrorEnvelope = json.loads(line)["error"]
+            return error
+    raise AssertionError(f"no error envelope on stderr: {stderr}")
+
+
 def wait_for_run(runner: CliRunner, run_id: int, timeout_s: float = 30.0) -> str:
     """Poll `dm run status` until the run reaches a terminal state, return it."""
     deadline = time.monotonic() + timeout_s
@@ -165,3 +177,162 @@ def db_yaml(tmp_path: Path) -> Path:
         "            value: redacted@example.com\n"
     )
     return path
+
+
+DISCOVERY_TEST_NAMESPACE = "dm_int_ns"
+
+
+def create_discovery_config(runner: CliRunner, name: str, config_type: str, yaml_file: Path) -> None:
+    """Create a discovery config, and fail the test when the CLI rejects it."""
+    result = runner.invoke(
+        app,
+        ["discover", "configs", "create", "--name", name, "--type", config_type, "-f", str(yaml_file)],
+    )
+    assert result.exit_code == 0, f"could not create {config_type} config '{name}': {result.stdout}{result.stderr}"
+
+
+def create_discovery_config_library(runner: CliRunner, name: str, yaml_file: Path, namespace: str = "") -> None:
+    """Create a discovery config library, and fail the test when the CLI rejects it."""
+    result = runner.invoke(
+        app,
+        ["discover", "libraries", "create", "--name", name, "--namespace", namespace, "-f", str(yaml_file)],
+    )
+    label = f"{namespace}/{name}" if namespace else name
+    assert result.exit_code == 0, f"could not create library '{label}': {result.stdout}{result.stderr}"
+
+
+@pytest.fixture()
+def discovery_config_name(runner: CliRunner) -> Iterator[str]:
+    name = f"dm_int_{uuid.uuid4().hex[:8]}"
+    yield name
+    for config_type in ("file", "database"):
+        runner.invoke(app, ["discover", "configs", "delete", name, "--type", config_type, "--yes"])
+
+
+@pytest.fixture()
+def discovery_library_name(runner: CliRunner) -> Iterator[str]:
+    name = f"dm_int_{uuid.uuid4().hex[:8]}"
+    yield name
+    for namespace in ("", DISCOVERY_TEST_NAMESPACE):
+        args = ["discover", "libraries", "delete", name, "--yes", "--force"]
+        if namespace:
+            args += ["--namespace", namespace]
+        runner.invoke(app, args)
+
+
+@pytest.fixture()
+def db_discovery_config(runner: CliRunner, tmp_path: Path) -> Path:
+    """The server's built-in database discovery config."""
+    path = tmp_path / "db_config.yaml"
+    result = runner.invoke(app, ["discover", "configs", "defaults", "--type", "database", "-o", str(path)])
+    if result.exit_code != 0 or not path.exists():
+        pytest.skip("Could not fetch the default database discovery config from the instance")
+    return path
+
+
+@pytest.fixture()
+def file_discovery_config(runner: CliRunner, tmp_path: Path) -> Path:
+    """The server's built-in file discovery config."""
+    path = tmp_path / "file_config.yaml"
+    result = runner.invoke(app, ["discover", "configs", "defaults", "--type", "file", "-o", str(path)])
+    if result.exit_code != 0 or not path.exists():
+        pytest.skip("Could not fetch the default file discovery config from the instance")
+    return path
+
+
+@pytest.fixture()
+def discovery_library_yaml(tmp_path: Path) -> Path:
+    """Minimal valid discovery config library."""
+    path = tmp_path / "library.yaml"
+    path.write_text("labels: []\nmetadata_rules: []\nidd_rules: []\n")
+    return path
+
+
+@pytest.fixture()
+def invalid_discovery_yaml(tmp_path: Path) -> Path:
+    """YAML the discovery parser rejects."""
+    path = tmp_path / "invalid.yaml"
+    path.write_text("this: is\nnot: a valid discovery config\ngarbage: true\n")
+    return path
+
+
+@pytest.fixture()
+def invalid_ruleset_yaml(tmp_path: Path) -> Path:
+    """YAML the ruleset parser rejects."""
+    path = tmp_path / "invalid_ruleset.yaml"
+    path.write_text("version: '1.0'\ntasks:\n  - type: not_a_real_task\n")
+    return path
+
+
+@pytest.fixture()
+def ruleset_library_name(runner: CliRunner) -> Iterator[str]:
+    name = f"dm_int_{uuid.uuid4().hex[:8]}"
+    yield name
+    runner.invoke(app, ["libraries", "delete", name, "--yes", "--force"])
+
+
+@pytest.fixture()
+def any_connection(runner: CliRunner) -> str:
+    """Name of any connection on the instance."""
+    result = runner.invoke(app, ["connections", "list", "--json"])
+    if result.exit_code != 0:
+        pytest.skip("Could not list connections")
+    conns = json.loads(result.stdout)
+    if not conns:
+        pytest.skip("No connections on this instance")
+    return str(conns[0]["name"])
+
+
+@pytest.fixture()
+def finished_non_schema_run(runner: CliRunner) -> int:
+    """Id of a finished run that schema discovery never ran on."""
+    result = runner.invoke(app, ["run", "list", "--limit", "100", "--json"])
+    if result.exit_code != 0:
+        pytest.skip("Could not list runs")
+    runs = json.loads(result.stdout)
+    scanned = {r["source"] for r in runs if str(r["ruleset"]).startswith(_SCHEMA_DISCOVERY_RULESET)}
+    finished = [
+        r
+        for r in runs
+        if r["status"] in _TERMINAL_STATUSES
+        and r["ruleset"]
+        and not str(r["ruleset"]).startswith(_DISCOVERY_RULESET_PREFIX)
+        and r["source"] not in scanned
+    ]
+    if not finished:
+        pytest.skip("No finished masking run on a connection without schema discovery")
+    return int(finished[0]["id"])
+
+
+@pytest.fixture()
+def database_connection(runner: CliRunner) -> str:
+    """Name of a database-type source connection."""
+    override = os.environ.get("DM_TEST_DB_CONN")
+    if override:
+        return override
+    result = runner.invoke(app, ["connections", "list", "--json"])
+    if result.exit_code != 0:
+        pytest.skip("Could not list connections to find a database source")
+    conns = json.loads(result.stdout)
+    match = next(
+        (c["name"] for c in conns if c["type"] == "Database" and c["role"] in {"source", "source+destination"}),
+        None,
+    )
+    if not match:
+        pytest.skip("No database-type source connection on this instance; set DM_TEST_DB_CONN to override")
+    return str(match)
+
+
+@pytest.fixture()
+def file_source_connection(runner: CliRunner) -> str:
+    """Name of a file-type source connection."""
+    override = os.environ.get("DM_TEST_FILE_CONN")
+    if override:
+        return override
+    result = runner.invoke(app, ["connections", "list", "--json"])
+    if result.exit_code != 0:
+        pytest.skip("Could not list connections to find a file source")
+    match = _pick_by_role(json.loads(result.stdout), {"source", "source+destination"}, ("MountedShare", "Azure", "S3"))
+    if not match:
+        pytest.skip("No file-type source connection on this instance; set DM_TEST_FILE_CONN to override")
+    return match

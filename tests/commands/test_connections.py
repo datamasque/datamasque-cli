@@ -4,6 +4,7 @@ import json
 from unittest.mock import MagicMock, patch
 
 import pytest
+from datamasque.client.exceptions import DataMasqueApiError
 from datamasque.client.models.connection import (
     DatabaseConnectionConfig,
     DatabaseType,
@@ -14,6 +15,7 @@ from datamasque.client.models.connection import (
 from typer.testing import CliRunner
 
 from datamasque_cli.commands.connections import _format_role
+from datamasque_cli.errors import ExitCode
 from datamasque_cli.main import app
 
 MODULE = "datamasque_cli.commands.connections"
@@ -137,7 +139,7 @@ def test_create_connection_mounted_share(mock_get_client: MagicMock, runner: Cli
 def test_create_connection_missing_name_aborts(mock_get_client: MagicMock, runner: CliRunner) -> None:
     mock_get_client.return_value = MagicMock()
     result = runner.invoke(app, ["connections", "create", "--type", "database"])
-    assert result.exit_code != 0
+    assert result.exit_code == ExitCode.INVALID_INPUT
 
 
 @patch(f"{MODULE}.get_client")
@@ -251,7 +253,7 @@ def test_delete_connection_aborts_when_missing(
 
     result = runner.invoke(app, ["connections", "delete", "no_such_conn", "--yes"])
 
-    assert result.exit_code != 0
+    assert result.exit_code == ExitCode.NOT_FOUND
     mock_client.delete_connection_by_name_if_exists.assert_not_called()
 
 
@@ -274,6 +276,22 @@ def test_test_connection_posts_to_test_endpoint(
 
 
 @patch(f"{MODULE}.get_client")
+def test_test_connection_reports_unreachable_target(
+    mock_get_client: MagicMock, mock_client: MagicMock, runner: CliRunner
+) -> None:
+    mock_get_client.return_value = mock_client
+    mock_response = MagicMock(status_code=400)
+    mock_response.json.return_value = {"detail": 'DNS lookup for "postgres-dev" failed.'}
+    mock_client.make_request.side_effect = DataMasqueApiError("boom", response=mock_response)
+
+    result = runner.invoke(app, ["connections", "test", "my_conn"])
+
+    assert result.exit_code == ExitCode.INVALID_INPUT
+    assert 'DNS lookup for "postgres-dev" failed.' in " ".join(result.stderr.split())
+    assert "Traceback" not in result.stderr
+
+
+@patch(f"{MODULE}.get_client")
 def test_test_connection_aborts_when_missing(
     mock_get_client: MagicMock, mock_client: MagicMock, runner: CliRunner
 ) -> None:
@@ -281,7 +299,7 @@ def test_test_connection_aborts_when_missing(
 
     result = runner.invoke(app, ["connections", "test", "no_such_conn"])
 
-    assert result.exit_code != 0
+    assert result.exit_code == ExitCode.NOT_FOUND
     mock_client.make_request.assert_not_called()
 
 
@@ -302,7 +320,7 @@ def test_update_connection_patches_changed_fields(
     mock_client.make_request.assert_called_once_with(
         "PATCH",
         "/api/connections/1/",
-        data={"host": "db2.example.com", "password": "new-pw"},
+        data={"host": "db2.example.com", "dbpassword": "new-pw"},
     )
 
 
@@ -314,7 +332,7 @@ def test_update_connection_aborts_without_any_fields(
 
     result = runner.invoke(app, ["connections", "update", "my_conn"])
 
-    assert result.exit_code != 0
+    assert result.exit_code == ExitCode.INVALID_INPUT
     mock_client.make_request.assert_not_called()
 
 
@@ -326,7 +344,7 @@ def test_update_connection_aborts_when_missing(
 
     result = runner.invoke(app, ["connections", "update", "no_such_conn", "--password", "x"])
 
-    assert result.exit_code != 0
+    assert result.exit_code == ExitCode.NOT_FOUND
     mock_client.make_request.assert_not_called()
 
 

@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 from datamasque.client.models.files import SnowflakeKeyFile
 from typer.testing import CliRunner
 
+from datamasque_cli.errors import ExitCode
 from datamasque_cli.main import app
 
 MODULE = "datamasque_cli.commands.files"
@@ -32,11 +33,11 @@ def test_delete_file_aborts_when_missing(mock_get_client: MagicMock, runner: Cli
 
     result = runner.invoke(app, ["files", "delete", "snowflake-key", "nope", "--yes"])
 
-    assert result.exit_code != 0
+    assert result.exit_code == ExitCode.NOT_FOUND
     client.delete_file_if_exists.assert_not_called()
 
 
 @patch(f"{MODULE}.get_client")
 def test_delete_file_rejects_unknown_type(mock_get_client: MagicMock, runner: CliRunner) -> None:
     result = runner.invoke(app, ["files", "delete", "not-a-type", "x", "--yes"])
-    assert result.exit_code != 0
+    assert result.exit_code == ExitCode.USAGE_ERROR

@@ -8,6 +8,7 @@ from datamasque.client.exceptions import DataMasqueApiError
 from datamasque.client.models.license import LicenseInfo, SwitchableLicenseMetadata
 from typer.testing import CliRunner
 
+from datamasque_cli.errors import ExitCode
 from datamasque_cli.main import app
 
 MODULE = "datamasque_cli.commands.system"
@@ -143,7 +144,7 @@ def test_admin_install_translates_401_into_conflict(mock_get_unauth: MagicMock, 
         ],
     )
 
-    assert result.exit_code == 8  # ErrorCode.CONFLICT
+    assert result.exit_code == ExitCode.CONFLICT
     assert "already complete" in result.stderr
     assert "dm auth login" in result.stderr
 
@@ -171,8 +172,10 @@ def test_admin_install_does_not_swallow_non_401_errors(mock_get_unauth: MagicMoc
         ],
     )
 
-    assert result.exit_code != 0
+    assert result.exit_code == ExitCode.INVALID_INPUT
     assert "already complete" not in result.stderr
+    assert "400 Bad Request" in result.stderr
+    assert "Traceback" not in result.stderr
 
 
 @patch(f"{MODULE}.get_unauthenticated_client")

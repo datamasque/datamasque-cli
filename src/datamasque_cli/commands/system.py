@@ -10,15 +10,8 @@ from datamasque.client.exceptions import DataMasqueApiError
 
 from datamasque_cli.client import get_client, get_unauthenticated_client
 from datamasque_cli.commands.rulesets import export_bundle, import_bundle
-from datamasque_cli.output import (
-    ErrorCode,
-    abort,
-    print_json,
-    print_success,
-    print_warning,
-    render_output,
-    should_emit_json,
-)
+from datamasque_cli.errors import ErrorCode, abort, abort_api_error
+from datamasque_cli.output import print_json, print_success, print_warning, render_output, should_emit_json
 
 app = typer.Typer(help="System administration commands.", no_args_is_help=True)
 
@@ -96,7 +89,14 @@ def import_config(
 ) -> None:
     """Deprecated alias for `dm rulesets import-bundle`."""
     print_warning("`dm system import` is deprecated; use `dm rulesets import-bundle` instead.")
-    import_bundle(file=file, profile=profile, is_confirmed=is_confirmed)
+    import_bundle(
+        file=file,
+        overwrite_rulesets=False,
+        overwrite_libraries=False,
+        overwrite_seeds=False,
+        profile=profile,
+        is_confirmed=is_confirmed,
+    )
 
 
 @app.command("upload-licence")
@@ -134,7 +134,7 @@ def admin_install(
                 code=ErrorCode.CONFLICT,
                 hint="Use `dm auth login` to sign in as an existing user.",
             )
-        raise
+        abort_api_error("Admin install failed", e)
     print_success(f"Admin user '{username}' created.")
 
 

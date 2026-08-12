@@ -141,10 +141,11 @@ wheels = [
 
 [[package]]
 name = "datamasque-cli"
-version = "1.4.0"
+version = "1.5.0"
 source = { editable = "." }
 dependencies = [
     { name = "datamasque-python" },
+    { name = "pydantic" },
     { name = "tomli-w" },
     { name = "typer" },
 ]
@@ -159,7 +160,8 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "datamasque-python", specifier = ">=1.0.0,<2" },
+    { name = "datamasque-python", specifier = ">=1.2.3,<2" },
+    { name = "pydantic", specifier = ">=2.5,<3" },
     { name = "tomli-w", specifier = ">=1.0.0" },
     { name = "typer", specifier = ">=0.15.0" },
 ]
@@ -174,15 +176,15 @@ dev = [
 
 [[package]]
 name = "datamasque-python"
-version = "1.0.4"
+version = "1.2.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
     { name = "requests" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e0/52/1acd8c73b15e07c417a7a90060facc15b8823d5cf3207c6a51a8f9510be6/datamasque_python-1.0.4.tar.gz", hash = "sha256:45d1020364e16cd8200b972960f2bf72a683a2633cacde0c0d3eb8b00a80191a", size = 164063, upload-time = "2026-06-09T06:35:57.719Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/09/99/8e4f8d27c33ac727b7f7bddec495567d2c656ddbd3790c5851b66da0e483/datamasque_python-1.2.3.tar.gz", hash = "sha256:695e0914775a16cad4d7d132041dc02e8425f6e3d65527434e79549d464b3d2e", size = 208454, upload-time = "2026-08-12T03:21:57.916Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/50/8e/7323a24cd06116cd2b1fcb3a664df86660fc11dbc49c470afc91d2744819/datamasque_python-1.0.4-py3-none-any.whl", hash = "sha256:893eb5e63814d2862d3f2d5d0b26850cb7367f54cd315bb7e2716ed4cdd69cd3", size = 50839, upload-time = "2026-06-09T06:35:56.328Z" },
+    { url = "https://files.pythonhosted.org/packages/2c/9e/7c0ba43d51fa3dad934c5d90aaed4abc4d5cde6f68781bec6d673513d04a/datamasque_python-1.2.3-py3-none-any.whl", hash = "sha256:f26f766b7211166219812a614c56cc2fee49cfea74a955beb81464c6454aea81", size = 77001, upload-time = "2026-08-12T03:21:56.526Z" },
 ]
 
 [[package]]

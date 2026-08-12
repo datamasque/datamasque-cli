@@ -23,9 +23,11 @@ In agent mode — auto-detected when stdout is not a TTY, `AI_AGENT` is set, or
 
 `error.code` is the stable identifier; branch on it rather than the message.
 The set is `not_found`, `invalid_input`, `ambiguous`, `auth_required`,
-`auth_failed`, `conflict`, `transport_error`, `error`. Exit code is non-zero
-on any error; exit 2 specifically means a CLI usage error (unknown flag,
-missing argument) from typer.
+`auth_failed`, `conflict`, `transport_error`, `cancelled`, `forbidden`,
+`error`. Exit code is non-zero on any error; exit 2 specifically means a CLI
+usage error (unknown flag, missing argument) from typer, exit 10 means the user
+declined a confirmation prompt, and exit 11 means the logged-in user lacks
+permission.
 
 `DM_OUTPUT=table` forces human-readable output.
 
@@ -55,7 +57,7 @@ Pass repeated `--options key=value` for server-side knobs
 - **Ruleset namespaces.** `database` and `file` rulesets share a name
   namespace, so `customers` can exist in both. `dm run start` reads the
   source connection's type and picks the matching ruleset automatically.
-  For `get` / `create` / `delete`, pass `--type file|database` only when
+  For `get` / `create` / `delete`, pass `--type database|file` only when
   two rows share the name and you need to disambiguate.
 
 - **File masking needs a destination.** Database masking is in-place;
@@ -88,6 +90,14 @@ Pass repeated `--options key=value` for server-side knobs
   off a discovery run and returns a run id. Poll with `dm run status <id>`,
   then fetch results with `dm discover schema-results <id>` /
   `sdd-report` / `db-report` / `file-report`.
+
+- **Configurable discovery and Safe Data Preview.** Save a discovery config
+  with `dm discover configs create` (start from `dm discover configs defaults`),
+  then run `dm discover schema <connection> --config <name>`. When the config
+  enables in-data discovery with safe data preview, `dm discover schema-results
+  <id> --json` carries a `safe_data_preview` per column — value distributions,
+  patterns, and cardinality worth reading before choosing masks. It is JSON-only; 
+  `file-report --json` exposes the same per locator.
 
 - **`dm rulesets validate --file <file> --type <type>`** runs server-side
   validation without committing the ruleset. Use this before `create`

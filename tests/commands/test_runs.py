@@ -23,6 +23,7 @@ from datamasque_cli.commands.runs import (
     _resolve_connection_id,
     _resolve_ruleset_id,
 )
+from datamasque_cli.errors import ExitCode
 from datamasque_cli.main import app
 
 MODULE = "datamasque_cli.commands.runs"
@@ -195,7 +196,7 @@ def test_start_run_aborts_on_destination_type_mismatch(mock_get_client: MagicMoc
 
     result = runner.invoke(app, ["run", "start", "-c", "db_src", "-r", "demo", "-d", "files_dst"])
 
-    assert result.exit_code != 0
+    assert result.exit_code == ExitCode.INVALID_INPUT
     client.start_masking_run.assert_not_called()
 
 
@@ -286,7 +287,7 @@ def test_start_run_aborts_when_file_source_has_no_destination(mock_get_client: M
 
     result = runner.invoke(app, ["run", "start", "-c", "files_src", "-r", "demo"])
 
-    assert result.exit_code != 0
+    assert result.exit_code == ExitCode.INVALID_INPUT
     assert "destination" in result.stderr.lower()
     client.start_masking_run.assert_not_called()
 
@@ -378,7 +379,7 @@ def test_retry_run_aborts_when_original_missing_ruleset(mock_get_client: MagicMo
 
     result = runner.invoke(app, ["run", "retry", "200"])
 
-    assert result.exit_code != 0
+    assert result.exit_code == ExitCode.INVALID_INPUT
     client.start_masking_run.assert_not_called()
 
 
@@ -460,7 +461,7 @@ def test_wait_run_failure_exits_1(mock_get_client: MagicMock, _mock_time: MagicM
     client.get_run_info.return_value = _run_info(id=1, status="failed")
 
     result = runner.invoke(app, ["run", "wait", "1"])
-    assert result.exit_code == 1
+    assert result.exit_code == ExitCode.ERROR
 
 
 # -- _print_pretty_logs ----------------------------------------------------
@@ -537,6 +538,75 @@ def test_run_report_aborts_with_friendly_message_on_404(
 
     result = runner.invoke(app, ["run", "report", "42"])
 
-    assert result.exit_code != 0
+    assert result.exit_code == ExitCode.NOT_FOUND
     assert "No report available for run 42" in result.stderr
     assert "dm run status 42" in result.stderr
+
+
+@patch(f"{MODULE}.get_client")
+def test_run_report_reports_server_reason_on_other_errors(
+    mock_get_client: MagicMock, mock_client: MagicMock, runner: CliRunner
+) -> None:
+    """Only a 404 means "no report yet" — other failures must show the server's reason."""
+    mock_get_client.return_value = mock_client
+    response = MagicMock(status_code=500)
+    response.json.return_value = {"detail": "Report storage is unavailable."}
+    mock_client.get_run_report.side_effect = DataMasqueApiError("boom", response=response)
+
+    result = runner.invoke(app, ["run", "report", "42"])
+
+    assert result.exit_code == ExitCode.ERROR
+    assert "Report storage is unavailable." in " ".join(result.stderr.split())
+    assert "No report available" not in result.stderr
+    assert "Traceback" not in result.stderr
+
+
+_UNKNOWN_RUN_COMMANDS = [
+    (["run", "status", "42"], "get_run_info"),
+    (["run", "logs", "42"], "get_run_log"),
+    (["run", "cancel", "42"], "cancel_run"),
+    (["run", "retry", "42"], "get_run_info"),
+    (["run", "wait", "42"], "get_run_info"),
+]
+
+
+@pytest.mark.parametrize(("command", "client_method"), _UNKNOWN_RUN_COMMANDS)
+@patch(f"{MODULE}.get_client")
+def test_unknown_run_is_not_found(
+    mock_get_client: MagicMock,
+    mock_client: MagicMock,
+    runner: CliRunner,
+    command: list[str],
+    client_method: str,
+) -> None:
+    mock_get_client.return_value = mock_client
+    response = MagicMock(status_code=404)
+    response.json.return_value = {"detail": "The requested run was not found."}
+    getattr(mock_client, client_method).side_effect = DataMasqueApiError("404", response=response)
+
+    result = runner.invoke(app, command)
+
+    assert result.exit_code == ExitCode.NOT_FOUND
+    assert "Run 42 not found." in " ".join(result.stderr.split())
+
+
+@pytest.mark.parametrize(("command", "client_method"), _UNKNOWN_RUN_COMMANDS)
+@patch(f"{MODULE}.get_client")
+def test_other_run_request_failures_report_the_server_reason(
+    mock_get_client: MagicMock,
+    mock_client: MagicMock,
+    runner: CliRunner,
+    command: list[str],
+    client_method: str,
+) -> None:
+    mock_get_client.return_value = mock_client
+    response = MagicMock(status_code=500)
+    response.json.return_value = {"detail": "Run storage is unavailable."}
+    getattr(mock_client, client_method).side_effect = DataMasqueApiError("boom", response=response)
+
+    result = runner.invoke(app, command)
+
+    assert result.exit_code == ExitCode.ERROR
+    assert "Run storage is unavailable." in " ".join(result.stderr.split())
+    assert "not found" not in result.stderr
+    assert "Traceback" not in result.stderr

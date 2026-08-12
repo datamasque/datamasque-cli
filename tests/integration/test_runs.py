@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+from datamasque_cli.errors import ExitCode
 from datamasque_cli.main import app
 from tests.integration.conftest import wait_for_run
 
@@ -112,3 +113,32 @@ def test_run_start_passes_options_end_to_end(
     assert result.exit_code == 0, f"run start --options failed: {result.stdout}"
     run_id = int(json.loads(result.stdout)["id"])
     assert wait_for_run(runner, run_id) in {"finished", "finished_with_warnings"}
+
+
+def test_run_start_with_invalid_ruleset_reports_the_server_reason(
+    runner: CliRunner,
+    ruleset_name: str,
+    invalid_ruleset_yaml: Path,
+    file_connection_pair: tuple[str, str],
+) -> None:
+    source, destination = file_connection_pair
+    create = runner.invoke(
+        app, ["rulesets", "create", "--name", ruleset_name, "--file", str(invalid_ruleset_yaml), "--type", "file"]
+    )
+    assert create.exit_code == 0, create.stdout
+
+    result = runner.invoke(app, ["run", "start", "-c", source, "-r", ruleset_name, "-d", destination, "--background"])
+
+    assert result.exit_code == ExitCode.INVALID_INPUT
+    stderr = " ".join(result.stderr.split())
+    assert "ruleset: Cannot start run" in stderr
+    assert "Traceback" not in result.stderr
+
+
+@pytest.mark.parametrize("command", ["status", "logs", "cancel", "retry"])
+def test_unknown_run_is_not_found(runner: CliRunner, command: str) -> None:
+    unknown_run_id = 999999999
+    result = runner.invoke(app, ["run", command, str(unknown_run_id)])
+
+    assert result.exit_code == ExitCode.NOT_FOUND
+    assert f"Run {unknown_run_id} not found." in " ".join(result.stderr.split())

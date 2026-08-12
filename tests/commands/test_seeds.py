@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 from datamasque.client.models.files import SeedFile
 from typer.testing import CliRunner
 
+from datamasque_cli.errors import ExitCode
 from datamasque_cli.main import app
 
 MODULE = "datamasque_cli.commands.seeds"
@@ -19,7 +20,7 @@ def test_delete_seed_aborts_when_missing(mock_get_client: MagicMock, runner: Cli
 
     result = runner.invoke(app, ["seeds", "delete", "nope.csv", "--yes"])
 
-    assert result.exit_code != 0
+    assert result.exit_code == ExitCode.NOT_FOUND
     client.delete_file_if_exists.assert_not_called()
 
 
