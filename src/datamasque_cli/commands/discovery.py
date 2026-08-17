@@ -33,7 +33,7 @@ from datamasque_cli.errors import (
     require_id_or_abort,
 )
 from datamasque_cli.fileio import write_bytes_or_abort, write_text_or_abort
-from datamasque_cli.output import print_json, print_success, render_output, should_emit_json
+from datamasque_cli.output import print_info, print_json, print_success, render_output, should_emit_json
 
 app = typer.Typer(help="Data discovery operations.", no_args_is_help=True)
 app.add_typer(discovery_configs.app, name="configs")
@@ -237,6 +237,8 @@ def schema_results(
         columns=["id", "schema", "table", "column", "data_type", "matches", "constraint"],
         title=f"Schema Discovery: Run {run_id}",
     )
+    if not should_emit_json(is_json) and any(row["safe_data_preview"] for row in data):
+        print_info("Safe Data Preview results are not shown in the table. Use --json to view them.")
 
 
 @app.command("sdd-report")

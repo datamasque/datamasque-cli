@@ -442,6 +442,35 @@ def test_schema_results_includes_safe_data_preview_in_json(mock_get_client: Magi
     assert "safe_data_preview" not in table.stdout
 
 
+@pytest.mark.parametrize("has_safe_data_preview", [True, False])
+@patch(f"{MODULE}.get_client")
+def test_schema_results_hints_at_json_only_when_safe_data_preview_present(
+    mock_get_client: MagicMock, runner: CliRunner, has_safe_data_preview: bool
+) -> None:
+    client = MagicMock()
+    mock_get_client.return_value = client
+    client.list_schema_discovery_results.return_value = [
+        SimpleNamespace(
+            id=1,
+            column="author",
+            table="books",
+            schema_name="public",
+            data=SimpleNamespace(
+                data_type="varchar",
+                discovery_matches=[SimpleNamespace(label="name")],
+                constraint="",
+                safe_data_preview=_make_string_preview() if has_safe_data_preview else None,
+            ),
+        ),
+    ]
+
+    result = runner.invoke(app, ["discover", "schema-results", "42"])
+
+    assert result.exit_code == 0
+    assert ("Safe Data Preview results are not shown" in result.stderr) is has_safe_data_preview
+    assert ("--json" in result.stderr) is has_safe_data_preview
+
+
 # -- configurable-discovery run triggers ----------------------------------
 
 

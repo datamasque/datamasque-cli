@@ -2,6 +2,10 @@
 
 ## v1.5.1
 
+### Added
+- `dm discover schema-results` notes when a run holds Safe Data Preview results.
+  The table cannot show them, so the note points to `--json`.
+
 ### Fixed
 - A fresh install no longer fails when `typer` drops a package `dm` imports.
   `rich` is now a declared dependency, and `typer` requires 0.16.0 or later.
