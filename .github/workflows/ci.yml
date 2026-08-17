@@ -4,7 +4,6 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -12,7 +11,7 @@ concurrency:
 
 jobs:
   lint:
-    name: Lint (ruff)
+    name: Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -33,6 +32,10 @@ jobs:
 
       - name: ruff format --check
         run: uv run ruff format --check src tests
+
+      # Fails when `src` imports a package `pyproject.toml` does not declare.
+      - name: deptry
+        run: uv run deptry src
 
   typecheck:
     name: Typecheck (mypy)
@@ -89,3 +92,20 @@ jobs:
           name: test-results-py${{ matrix.python-version }}
           path: report.xml
           retention-days: 7
+
+  install-smoke:
+    name: Fresh install smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Build
+        run: |
+          rm -rf dist
+          uv build
+
+      - name: Install wheel into a clean venv and run dm
+        run: ./scripts/installation_smoke_test.sh

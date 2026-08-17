@@ -25,10 +25,15 @@ jobs:
           echo "::notice title=TestPyPI version::${VERSION}"
 
       - name: Build
-        run: uv build
+        run: |
+          rm -rf dist
+          uv build
 
       - name: Validate distributions
         run: uvx twine check dist/*
+
+      - name: Fresh install smoke test
+        run: ./scripts/installation_smoke_test.sh
 
       - name: Upload distributions
         uses: actions/upload-artifact@v4

@@ -1,10 +1,11 @@
-.PHONY: install lint format mypy test test-integration test-integration-local check build release-patch release-minor release-major
+.PHONY: install lint format mypy test test-integration test-integration-local check build smoke release-patch release-minor release-major
 
 install:
 	uv sync
 
 lint:
 	uv run ruff check src/ tests/
+	uv run deptry src/
 
 format:
 	uv run ruff format src/ tests/
@@ -32,6 +33,12 @@ format-check:
 
 build:
 	uv build
+
+# Build the wheel and install it into a clean venv, as a user's machine would.
+smoke:
+	rm -rf dist
+	uv build
+	./scripts/installation_smoke_test.sh
 
 # Bump version, commit, tag, push — CI publishes automatically.
 # Usage: make release-patch  (0.1.0 → 0.1.1)
