@@ -1,6 +1,6 @@
 [project]
 name = "datamasque-cli"
-version = "1.5.0"
+version = "1.5.1"
 description = "Official command-line interface for the DataMasque data-masking platform."
 authors = [
     { name = "DataMasque Ltd" },
@@ -10,8 +10,9 @@ license = "Apache-2.0"
 license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = [
-    "typer>=0.15.0",
-    "tomli-w>=1.0.0",
+    "typer>=0.16.0,<1",
+    "rich>=13.8",
+    "tomli-w>=1.0.0,<2",
     "datamasque-python>=1.2.3,<2",
     "pydantic>=2.5,<3",
 ]
@@ -46,6 +47,7 @@ dev = [
     "ruff>=0.9",
     "mypy>=1.10",
     "types-requests>=2.31",
+    "deptry>=0.25.1",
 ]
 
 [tool.ruff]
