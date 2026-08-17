@@ -26,7 +26,7 @@ test-integration:
 test-integration-local:
 	@eval "$$(python3 scripts/active_profile_env.py)" && uv run pytest -m integration
 
-check: lint format-check mypy test
+check: lint format-check mypy test smoke
 
 format-check:
 	uv run ruff format --check src/ tests/

@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.5.1
+
+### Fixed
+- A fresh install no longer fails when `typer` drops a package `dm` imports.
+  `rich` is now a declared dependency, and `typer` requires 0.16.0 or later.
+
 ## v1.5.0
 
 ### Added
