@@ -44,6 +44,13 @@ def connection_name(runner: CliRunner) -> Iterator[str]:
 
 
 @pytest.fixture()
+def table_reference_name(runner: CliRunner) -> Iterator[str]:
+    name = f"dm_int_{uuid.uuid4().hex[:8]}"
+    yield name
+    runner.invoke(app, ["table-references", "delete", name, "--yes"])
+
+
+@pytest.fixture()
 def file_connection_pair(runner: CliRunner) -> tuple[str, str]:
     """Return (source, destination) names of file-type connections on the instance.
 

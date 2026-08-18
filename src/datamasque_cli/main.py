@@ -32,6 +32,7 @@ from datamasque_cli.commands import (
     runs,
     seeds,
     system,
+    table_references,
     users,
 )
 from datamasque_cli.errors import ErrorCode, abort, abort_api_error
@@ -63,6 +64,7 @@ app.add_typer(files.app, name="files")
 app.add_typer(system.app, name="system")
 app.add_typer(ruleset_libraries.app, name="libraries")
 app.add_typer(ifm.app, name="ifm")
+app.add_typer(table_references.app, name="table-references")
 
 
 @app.command()

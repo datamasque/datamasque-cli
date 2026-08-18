@@ -21,7 +21,7 @@ from datamasque.client.models.connection import (
     SnowflakeConnectionConfig,
 )
 
-from datamasque_cli.client import get_client
+from datamasque_cli.client import get_client, resolve_connection
 from datamasque_cli.errors import ErrorCode, abort, abort_api_error, confirm_or_abort
 from datamasque_cli.fileio import read_json_object_or_abort
 from datamasque_cli.output import print_success, redact_sensitive_fields, render_output
@@ -298,10 +298,7 @@ def test_connection(
     success, a warning, or a hard failure.
     """
     client = get_client(profile)
-
-    match = next((c for c in client.list_connections() if c.name == name or str(c.id) == name), None)
-    if match is None:
-        abort(f"Connection '{name}' not found.", code=ErrorCode.NOT_FOUND)
+    match = resolve_connection(client, name)
 
     try:
         response = client.make_request("POST", f"/api/connections/{match.id}/test/", data={})
@@ -334,10 +331,7 @@ def update_connection(
     references it stays intact. Pass only the fields that should change.
     """
     client = get_client(profile)
-
-    match = next((c for c in client.list_connections() if c.name == name or str(c.id) == name), None)
-    if match is None:
-        abort(f"Connection '{name}' not found.", code=ErrorCode.NOT_FOUND)
+    match = resolve_connection(client, name)
 
     updates: dict[str, object] = {
         key: value

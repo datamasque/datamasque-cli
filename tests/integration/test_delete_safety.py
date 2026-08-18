@@ -11,7 +11,7 @@ from datamasque_cli.main import app
 pytestmark = pytest.mark.integration
 
 
-@pytest.mark.parametrize("resource", ["connections", "rulesets", "libraries"])
+@pytest.mark.parametrize("resource", ["connections", "rulesets", "libraries", "table-references"])
 def test_delete_nonexistent_aborts_not_found(runner: CliRunner, resource: str) -> None:
     missing = f"dm_int_missing_{uuid.uuid4().hex[:8]}"
 

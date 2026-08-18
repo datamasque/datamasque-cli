@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- `dm table-references` — manage table references (`list`, `get`, `create`,
+  `update`, `delete`), the named pointers to identity data used for
+  cross-system consistent masking. `create` accepts `--file` for a full
+  JSON definition or `--name`/`--connection`/`--source` flags plus the
+  format/CSV options (`--format`, `--delimiter`, `--encoding`,
+  `--quotechar`, `--null-string`) for the common case, and is a
+  create-or-update like `dm connections create`; `update` changes only the
+  fields passed, preserving the reference's id.
+
+### Internal
+- Extracted `resolve_connection` (name-or-ID lookup) into `client.py` and
+  routed `connections.py`'s `test`/`update` and `discover schema`/`discover
+  file` through it, replacing three separate inline copies.
+
 ## v1.5.1
 
 ### Added
