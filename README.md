@@ -167,6 +167,79 @@ dm libraries status <name>                        # Validation status; poll afte
 dm libraries usage <name>                         # Show rulesets using it
 ```
 
+### Table references
+
+A table reference is a named pointer to identity data — a CSV/Parquet file in
+a file connection, or a `schema.table` in a database connection — that a
+ruleset addresses by name for cross-system consistent masking, instead of
+re-declaring the source in every ruleset that needs it.
+
+```console
+dm table-references list                                                # id, name, connection (the connection's ID), source
+dm table-references get <name>                                          # Show full details
+dm table-references create --file reference.json                       # Create/update from JSON (see shape below)
+dm table-references create --name <name> --connection <name-or-id> --source <path-or-schema.table>
+dm table-references create --name <name> --connection <name-or-id> --source data.csv --format parquet  # suffix ignored — format is explicit
+dm table-references update <name> --source <new-path>                   # Change selected fields, preserving the id
+dm table-references update <name> --delimiter ';' --null-string NULL    # CSV options also update via a full replace, not a merge
+dm table-references delete <name>                                       # Delete a table reference
+```
+
+`--source` is a file path within the connection for file connections, or a
+dotted `schema.table` for database connections. `--format` applies to file
+connections only (ignored for database connections); the CSV options
+(`--delimiter`, `--encoding`, `--quotechar`, `--null-string`) apply only when
+`--format` is `csv` (the default when unset). None of these are ever inferred
+from `--source`'s suffix.
+
+`--file` takes a JSON object matching the model directly — unlike
+`--connection`, its `connection` key must be a connection **ID**, not a name:
+
+```json
+{
+  "name": "customer_identities",
+  "connection": "3fa1c2b0-...",
+  "source": "identities/customers.csv",
+  "options": {"format": "csv", "delimiter": ";", "null_string": "NULL"}
+}
+```
+
+`options` is optional (omit it to use the server's defaults) and, when
+present, only needs the fields you want to override.
+
+`update` accepts `--connection`, `--source`, `--format`, and the CSV options
+above, changing only the fields you pass. Passing any format/CSV flag
+replaces the whole stored options object (a full server-side update, not a
+per-field merge) — the fields you didn't pass keep their current values, but
+a reference with no options previously set gets the untouched fields filled
+with their defaults.
+
+A ruleset consumes a table reference through the `table_reference` hash
+source, a sibling of `column` inside `hash_columns` (task-level, on
+`mask_table`/`mask_tabular_file`, or rule-level) — this CLI doesn't validate
+or generate that syntax itself, `rulesets create` passes the file through
+as-is, but here's the shape:
+
+```yaml
+rules:
+  - column: full_name
+    hash_columns:
+      - table_reference: customer_identities   # the --name you gave it above
+        source_key: [customer_id]               # column(s) on the row being masked
+        target_key: [customer_id]                # column(s) on the map, paired by position
+        value: [masked_name_seed]                 # map column(s) that seed the masking
+    masks:
+      - type: from_file
+        seed_file: DataMasque_firstNames_mixed.csv
+        seed_column: firstname-mixed
+```
+
+`on_missing` (optional, `error` default or `self`) controls what happens
+when a row's key has no match in the map. The same reference can be keyed
+differently per ruleset — a database task might use `customer_id` while a
+tabular-file task on the same map uses `account_number`/`account_ref` — and
+both resolve to the same masked value for the same entity.
+
 ### In-flight masking
 
 The IFM service runs alongside the admin server,

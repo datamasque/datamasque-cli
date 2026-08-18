@@ -10,6 +10,7 @@ import os
 
 from datamasque.client import DataMasqueClient, DataMasqueIfmClient
 from datamasque.client.exceptions import DataMasqueApiError, DataMasqueTransportError, IfmAuthError
+from datamasque.client.models.connection import ConnectionConfig
 from datamasque.client.models.dm_instance import DataMasqueInstanceConfig
 from datamasque.client.models.ifm import DataMasqueIfmInstanceConfig
 
@@ -212,3 +213,12 @@ def get_ifm_client(profile_name: str | None = None) -> DataMasqueIfmClient:
         extra_auth_excs=(IfmAuthError,),
     )
     return client
+
+
+def resolve_connection(client: DataMasqueClient, name_or_id: str) -> ConnectionConfig:
+    """Resolve a connection by name or ID via the connection listing, aborting when not found."""
+    connections = client.list_connections()
+    match = next((c for c in connections if c.name == name_or_id or str(c.id) == name_or_id), None)
+    if match is None:
+        abort(f"Connection '{name_or_id}' not found.", code=ErrorCode.NOT_FOUND)
+    return match
