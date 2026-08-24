@@ -344,7 +344,7 @@ def test_create_reference_not_supported_by_server(mock_get_client: MagicMock, ru
     client = _mock_client()
     mock_get_client.return_value = client
     client.list_connections.return_value = [SimpleNamespace(id="conn-1", name="input")]
-    client.create_or_update_table_reference.side_effect = _api_error(HTTPStatus.NOT_FOUND)
+    client.get_table_reference_by_name.side_effect = _api_error(HTTPStatus.NOT_FOUND)
 
     result = runner.invoke(
         app,
@@ -362,6 +362,36 @@ def test_create_reference_not_supported_by_server(mock_get_client: MagicMock, ru
 
     assert result.exit_code == ExitCode.NOT_FOUND
     assert "not supported by this datamasque version" in result.stderr.lower()
+    client.create_or_update_table_reference.assert_not_called()
+
+
+@patch(f"{MODULE}.get_client")
+def test_create_reference_missing_on_write_is_not_reported_as_unsupported(
+    mock_get_client: MagicMock, runner: CliRunner
+) -> None:
+    """A 404 from the create/update call itself is a real failure, not evidence the endpoint is missing."""
+    client = _mock_client()
+    mock_get_client.return_value = client
+    client.list_connections.return_value = [SimpleNamespace(id="conn-1", name="input")]
+    client.get_table_reference_by_name.return_value = None
+    client.create_or_update_table_reference.side_effect = _api_error(HTTPStatus.NOT_FOUND, "Not found.")
+
+    result = runner.invoke(
+        app,
+        [
+            "table-references",
+            "create",
+            "--name",
+            "customer_identities",
+            "--connection",
+            "input",
+            "--source",
+            "in/customers.csv",
+        ],
+    )
+
+    assert result.exit_code == ExitCode.NOT_FOUND
+    assert "not supported" not in result.stderr.lower()
 
 
 # -- create (--file) ------------------------------------------------------------
@@ -416,6 +446,24 @@ def test_create_reference_file_bad_json_aborts(mock_get_client: MagicMock, runne
     result = runner.invoke(app, ["table-references", "create", "--file", str(bad_file)])
 
     assert result.exit_code == ExitCode.INVALID_INPUT
+    client.create_or_update_table_reference.assert_not_called()
+
+
+@patch(f"{MODULE}.get_client")
+def test_create_reference_file_invalid_schema_aborts(
+    mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path
+) -> None:
+    """Valid JSON that doesn't match `TableReference` aborts cleanly instead of raising."""
+    client = _mock_client()
+    mock_get_client.return_value = client
+    reference_file = tmp_path / "reference.json"
+    reference_file.write_text(json.dumps({"name": "customer_identities"}))
+
+    result = runner.invoke(app, ["table-references", "create", "--file", str(reference_file)])
+
+    assert result.exit_code == ExitCode.INVALID_INPUT
+    assert "does not match the expected format" in " ".join(result.stderr.lower().split())
+    assert "Traceback" not in result.stderr
     client.create_or_update_table_reference.assert_not_called()
 
 

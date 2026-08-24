@@ -13,7 +13,7 @@ dependencies = [
     "typer>=0.16.0,<1",
     "rich>=13.8",
     "tomli-w>=1.0.0,<2",
-    "datamasque-python>=1.2.3,<2",
+    "datamasque-python>=1.2.5,<2",
     "pydantic>=2.5,<3",
 ]
 classifiers = [

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.6.0
 
 ### Added
 - `dm table-references` — manage table references (`list`, `get`, `create`,

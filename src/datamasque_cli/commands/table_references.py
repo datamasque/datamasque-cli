@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from http import HTTPStatus
 from pathlib import Path
-from typing import TypeVar
 
 import typer
 from datamasque.client import DataMasqueClient
@@ -15,10 +13,8 @@ from datamasque.client.models.table_reference import TableReference, TableRefere
 
 from datamasque_cli.client import get_client, resolve_connection
 from datamasque_cli.errors import ErrorCode, abort, abort_api_error, confirm_or_abort
-from datamasque_cli.fileio import read_json_object_or_abort
+from datamasque_cli.fileio import read_model_or_abort
 from datamasque_cli.output import print_success, render_output
-
-T = TypeVar("T")
 
 app = typer.Typer(
     help=(
@@ -35,20 +31,39 @@ _CREATE_FORMAT_HELP = "csv if unset (server default), or parquet — file connec
 _UPDATE_FORMAT_HELP = "csv or parquet, unchanged if omitted — file connections only, never inferred from --source"
 
 
-def _call_checking_support(fn: Callable[..., T], *args: object, **kwargs: object) -> T:
-    """Call the first table-references SDK method in a command.
+def _abort_if_unsupported(exc: DataMasqueApiError) -> None:
+    """Explain a 404 from the table-references listing as an absent feature, not an absent object.
 
-    Translates a 404 into a clear "not supported by this DataMasque version" error: `list`/`get`
-    filter client-side over a full listing, so a 404 here means the endpoint itself is missing on
-    an older server, not that a specific object is missing. Only safe for that first call in a
-    command — a later call (e.g. `update`'s PUT) already knows the endpoint exists.
+    The listing endpoint takes no name filter, so both readers below fetch the whole collection.
+    A 404 from either therefore means the route itself is missing on an older server. Only the
+    readers may use this: a write targets `/api/table-references/<id>/`, where a 404 means that
+    one reference is gone.
     """
+    if exc.response.status_code != HTTPStatus.NOT_FOUND:
+        return
+    abort("Table references are not supported by this DataMasque version.", code=ErrorCode.NOT_FOUND)
+
+
+def _list_or_abort(client: DataMasqueClient) -> list[TableReference]:
+    """Return every table reference, or abort with the reason the listing failed."""
     try:
-        return fn(*args, **kwargs)
+        # `datamasque.*` is exempted from mypy's `follow_imports`, so the SDK call resolves to
+        # `Any` here even though `list_table_references` itself declares `-> list[TableReference]`.
+        references: list[TableReference] = client.list_table_references()
+        return references
     except DataMasqueApiError as exc:
-        if exc.response.status_code == HTTPStatus.NOT_FOUND:
-            abort("Table references are not supported by this DataMasque version.", code=ErrorCode.NOT_FOUND)
-        abort_api_error("Table reference request failed", exc)
+        _abort_if_unsupported(exc)
+        abort_api_error("Failed to list table references", exc)
+
+
+def _get_or_abort(client: DataMasqueClient, name: str) -> TableReference | None:
+    """Return the table reference named `name`, or `None`, or abort with the reason the lookup failed."""
+    try:
+        reference: TableReference | None = client.get_table_reference_by_name(name)
+        return reference
+    except DataMasqueApiError as exc:
+        _abort_if_unsupported(exc)
+        abort_api_error(f"Failed to look up table reference '{name}'", exc)
 
 
 @app.command("list")
@@ -58,7 +73,7 @@ def list_references(
 ) -> None:
     """List all table references."""
     client = get_client(profile)
-    references = _call_checking_support(client.list_table_references)
+    references = _list_or_abort(client)
 
     data = [
         {
@@ -81,7 +96,7 @@ def get_reference(
 ) -> None:
     """Show details for a specific table reference."""
     client = get_client(profile)
-    reference = _call_checking_support(client.get_table_reference_by_name, name)
+    reference = _get_or_abort(client, name)
     if reference is None:
         abort(f"Table reference '{name}' not found.", code=ErrorCode.NOT_FOUND)
 
@@ -184,16 +199,30 @@ def create_reference(
         source=source,
         options=TableReferenceOptions(**overrides) if overrides else None,
     )
-    _call_checking_support(client.create_or_update_table_reference, reference)
+    _create_or_update(client, reference)
     print_success(f"Table reference '{name}' created/updated.")
 
 
 def _create_from_file(client: DataMasqueClient, file: Path) -> None:
     """Create a table reference from a JSON file."""
-    data = read_json_object_or_abort(file)
-    reference = TableReference.model_validate(data)
-    _call_checking_support(client.create_or_update_table_reference, reference)
+    reference = read_model_or_abort(file, TableReference)
+    _create_or_update(client, reference)
     print_success(f"Table reference '{reference.name}' created/updated.")
+
+
+def _create_or_update(client: DataMasqueClient, reference: TableReference) -> None:
+    """Create or update `reference`, distinguishing an unsupported server from any other failure.
+
+    `create_or_update_table_reference` itself makes two requests (a GET to look up an existing
+    reference by name, then a POST or PUT), so probe support with `_get_or_abort` first and let
+    a 404 from the create/update call surface as a plain API error instead of being misread as
+    "not supported".
+    """
+    _get_or_abort(client, reference.name)
+    try:
+        client.create_or_update_table_reference(reference)
+    except DataMasqueApiError as exc:
+        abort_api_error(f"Failed to create/update table reference '{reference.name}'", exc)
 
 
 @app.command("update")
@@ -214,7 +243,7 @@ def update_reference(
         abort("Pass at least one field to update (e.g. --source, --format).", code=ErrorCode.INVALID_INPUT)
 
     client = get_client(profile)
-    reference = _call_checking_support(client.get_table_reference_by_name, name)
+    reference = _get_or_abort(client, name)
     if reference is None:
         abort(f"Table reference '{name}' not found.", code=ErrorCode.NOT_FOUND)
 
@@ -244,7 +273,7 @@ def delete_reference(
 ) -> None:
     """Delete a table reference by name."""
     client = get_client(profile)
-    reference = _call_checking_support(client.get_table_reference_by_name, name)
+    reference = _get_or_abort(client, name)
     if reference is None:
         abort(f"Table reference '{name}' not found.", code=ErrorCode.NOT_FOUND)
 

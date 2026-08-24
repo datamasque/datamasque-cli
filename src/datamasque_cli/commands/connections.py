@@ -20,6 +20,7 @@ from datamasque.client.models.connection import (
     S3ConnectionConfig,
     SnowflakeConnectionConfig,
 )
+from pydantic import ValidationError
 
 from datamasque_cli.client import get_client, resolve_connection
 from datamasque_cli.errors import ErrorCode, abort, abort_api_error, confirm_or_abort
@@ -218,7 +219,10 @@ def _create_from_file(client: DataMasqueClient, file: Path) -> None:
         data["database_type"] = DatabaseType(data["database_type"])
 
     klass = _CONNECTION_CLASSES[conn_type]
-    config = klass(**data)
+    try:
+        config = klass(**data)
+    except ValidationError as exc:
+        abort(f"{file} does not match the expected format: {exc}", code=ErrorCode.INVALID_INPUT)
     client.create_or_update_connection(config)
     print_success(f"Connection '{config.name}' created/updated.")
 
