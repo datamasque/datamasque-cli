@@ -1,6 +1,6 @@
 ---
 name: datamasque-cli
-description: Use when the user wants to interact with a DataMasque instance — start masking runs, check run status, list connections or rulesets, manage seeds, manage ruleset libraries, check system health, configure the AI Engine, or any task involving the DataMasque API. Triggers on "mask the data", "start a run", "check the run", "list connections", "list rulesets", "upload a seed", "check DataMasque health", "dm status", "ruleset library", "configure the AI Engine", "set the AI Engine URL", or any request to operate DataMasque programmatically.
+description: Use when the user wants to interact with a DataMasque instance — start masking runs, check run status, list connections or rulesets, manage seeds, manage ruleset libraries, manage table references, check system health, configure the AI Engine, or any task involving the DataMasque API. Triggers on "mask the data", "start a run", "check the run", "list connections", "list rulesets", "upload a seed", "check DataMasque health", "dm status", "ruleset library", "table reference", "cross-system consistent masking", "configure the AI Engine", "set the AI Engine URL", or any request to operate DataMasque programmatically.
 argument-hint: e.g. "start a run with docx_masking on var_input_docx"
 user-invocable: true
 ---
@@ -113,3 +113,12 @@ Pass repeated `--options key=value` for server-side knobs
   `dm run start -c <x>`, `dm discover schema <x>`, etc. all try the name
   first and fall back to a UUID match. Prefer names for readability;
   reach for UUIDs only when names collide (rare).
+
+- **Table references are the identity map behind cross-system consistent
+  masking.** `dm table-references create --name <n> --connection <c>
+  --source <path-or-schema.table>` registers one; a ruleset then addresses
+  it by name via the `table_reference` hash source in `hash_columns`
+  (`source_key`/`target_key`/`value`) — this CLI doesn't generate or
+  validate that ruleset syntax. `create` is create-or-update like
+  `dm connections create`; `--file`'s JSON needs a connection **ID**, not
+  a name, unlike the `--connection` flag.

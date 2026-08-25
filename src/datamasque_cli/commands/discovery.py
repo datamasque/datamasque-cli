@@ -23,7 +23,7 @@ from datamasque.client.models.discovery import (
 from datamasque.client.models.discovery_config import DiscoveryConfigId, DiscoveryConfigType
 from datamasque.client.models.status import MaskingRunStatus
 
-from datamasque_cli.client import get_client
+from datamasque_cli.client import get_client, resolve_connection
 from datamasque_cli.commands import discovery_config_libraries, discovery_configs
 from datamasque_cli.errors import (
     ErrorCode,
@@ -79,14 +79,6 @@ def _write_or_echo(content: str, output: Path | None, success_label: str) -> Non
     print_success(f"{success_label} written to {output}")
 
 
-def _resolve_connection_id(client: DataMasqueClient, name_or_id: str) -> str:
-    """Resolve a connection name or ID to its UUID string."""
-    match = next((c for c in client.list_connections() if c.name == name_or_id or str(c.id) == name_or_id), None)
-    if match is None:
-        abort(f"Connection '{name_or_id}' not found.", code=ErrorCode.NOT_FOUND)
-    return str(match.id)
-
-
 def _resolve_discovery_config_id(
     client: DataMasqueClient, name: str, expected_type: DiscoveryConfigType
 ) -> DiscoveryConfigId:
@@ -126,7 +118,7 @@ def schema_discovery(
     (poll with `dm run status <run-id>`).
     """
     client = get_client(profile)
-    conn_id = _resolve_connection_id(client, connection)
+    conn_id = str(resolve_connection(client, connection).id)
 
     try:
         if config is not None:
@@ -168,7 +160,7 @@ def start_file_discovery(
     (poll with `dm run status <run-id>`).
     """
     client = get_client(profile)
-    conn_id = _resolve_connection_id(client, connection)
+    conn_id = str(resolve_connection(client, connection).id)
 
     try:
         if config is not None:

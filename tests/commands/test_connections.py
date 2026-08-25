@@ -169,6 +169,25 @@ def test_create_connection_from_json_file(mock_get_client: MagicMock, runner: Cl
 
 
 @patch(f"{MODULE}.get_client")
+def test_create_connection_from_json_file_invalid_schema_aborts(
+    mock_get_client: MagicMock, runner: CliRunner, tmp_path: MagicMock
+) -> None:
+    """Valid JSON that doesn't match the connection type's schema aborts cleanly instead of raising."""
+    client = MagicMock()
+    mock_get_client.return_value = client
+
+    conn_file = tmp_path / "conn.json"
+    conn_file.write_text(json.dumps({"type": "database", "name": "from_file"}))
+
+    result = runner.invoke(app, ["connections", "create", "--file", str(conn_file)])
+
+    assert result.exit_code == ExitCode.INVALID_INPUT
+    assert "does not match the expected format" in " ".join(result.stderr.lower().split())
+    assert "Traceback" not in result.stderr
+    client.create_or_update_connection.assert_not_called()
+
+
+@patch(f"{MODULE}.get_client")
 def test_create_databricks_connection_from_json_file(
     mock_get_client: MagicMock, runner: CliRunner, tmp_path: MagicMock
 ) -> None:

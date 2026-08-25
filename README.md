@@ -167,6 +167,19 @@ dm libraries status <name>                        # Validation status; poll afte
 dm libraries usage <name>                         # Show rulesets using it
 ```
 
+### Table references
+
+```console
+dm table-references list                                                # id, name, connection (ID), source
+dm table-references get <name>                                          # Show full details
+dm table-references create --file reference.json                       # Create/update from JSON — connection must be an ID, not a name
+dm table-references create --name <name> --connection <name-or-id> --source <path-or-schema.table>
+dm table-references create --name <name> --connection <name-or-id> --source data.csv --format parquet  # Format is explicit, never inferred from --source
+dm table-references update <name> --source <new-path>                   # Change selected fields, preserving the id
+dm table-references update <name> --delimiter ';' --null-string NULL    # Any CSV/format flag replaces options wholesale, not a merge
+dm table-references delete <name>                                       # Delete a table reference
+```
+
 ### In-flight masking
 
 The IFM service runs alongside the admin server,

@@ -9,7 +9,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from pydantic import JsonValue
+from datamasque.client.models.table_reference import TableReference
+from pydantic import JsonValue, ValidationError
 
 from datamasque_cli.errors import ErrorCode, abort
 
@@ -58,6 +59,15 @@ def read_json_object_or_abort(file: Path) -> dict[str, JsonValue]:
     if not isinstance(parsed, dict):
         abort(f"{file} must contain a JSON object.", code=ErrorCode.INVALID_INPUT)
     return parsed
+
+
+def read_model_or_abort(file: Path, model: type[TableReference]) -> TableReference:
+    """Read `file` as a JSON object matching `model`, and abort when it does not."""
+    data = read_json_object_or_abort(file)
+    try:
+        return model.model_validate(data)
+    except ValidationError as exc:
+        abort(f"{file} does not match the expected format: {exc}", code=ErrorCode.INVALID_INPUT)
 
 
 def write_bytes_or_abort(path: Path, content: bytes) -> None:
