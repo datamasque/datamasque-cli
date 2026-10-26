@@ -34,6 +34,7 @@ from datamasque_cli.errors import (
 )
 from datamasque_cli.fileio import write_bytes_or_abort, write_text_or_abort
 from datamasque_cli.output import print_info, print_json, print_success, render_output, should_emit_json
+from datamasque_cli.projects import in_project, require_single_or_abort, resolve_optional_project
 
 app = typer.Typer(help="Data discovery operations.", no_args_is_help=True)
 app.add_typer(discovery_configs.app, name="configs")
@@ -80,20 +81,22 @@ def _write_or_echo(content: str, output: Path | None, success_label: str) -> Non
 
 
 def _resolve_discovery_config_id(
-    client: DataMasqueClient, name: str, expected_type: DiscoveryConfigType
+    client: DataMasqueClient, name: str, expected_type: DiscoveryConfigType, project: str | None
 ) -> DiscoveryConfigId:
     """Resolve a discovery config name to its UUID, requiring it to be of `expected_type`.
 
-    Config names are unique per type, so name plus type identifies at most one config.
+    Config names are unique per type within a project, so name, type and project identify at most one config.
     """
-    match = client.get_discovery_config_by_name(name, expected_type)
-    if match is not None:
+    named = in_project(
+        [c for c in client.list_discovery_configs() if c.name == name], resolve_optional_project(client, project)
+    )
+    of_type = [c for c in named if c.config_type is expected_type]
+    if of_type:
+        match = require_single_or_abort(client, of_type, f"Discovery config '{name}'")
         return require_id_or_abort(match.id, f"discovery config '{name}'")
 
-    other_type = (
-        DiscoveryConfigType.file if expected_type is DiscoveryConfigType.database else DiscoveryConfigType.database
-    )
-    if client.get_discovery_config_by_name(name, other_type) is not None:
+    if named:
+        other_type = named[0].config_type
         abort(
             f"Discovery config '{name}' exists as {other_type.value}, "
             f"but {expected_type.value} discovery needs a {expected_type.value} config.",
@@ -108,6 +111,9 @@ def schema_discovery(
     config: str | None = typer.Option(
         None, "--config", "-c", help="Run with a saved database discovery config (configurable discovery)"
     ),
+    project: str | None = typer.Option(
+        None, "--project", help="Project of the connection and config, when their names exist in more than one"
+    ),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
     is_json: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
@@ -118,11 +124,11 @@ def schema_discovery(
     (poll with `dm run status <run-id>`).
     """
     client = get_client(profile)
-    conn_id = str(resolve_connection(client, connection).id)
+    conn_id = str(resolve_connection(client, connection, project).id)
 
     try:
         if config is not None:
-            config_id = _resolve_discovery_config_id(client, config, DiscoveryConfigType.database)
+            config_id = _resolve_discovery_config_id(client, config, DiscoveryConfigType.database, project)
             from_config = SchemaDiscoveryFromConfigRequest(connection=ConnectionId(conn_id), discovery_config=config_id)
             run_id = client.start_schema_discovery_run_from_config(from_config)
             config_source = f"config '{config}'"
@@ -151,6 +157,9 @@ def start_file_discovery(
     config: str | None = typer.Option(
         None, "--config", "-c", help="Run with a saved file discovery config (configurable discovery)"
     ),
+    project: str | None = typer.Option(
+        None, "--project", help="Project of the connection and config, when their names exist in more than one"
+    ),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
     is_json: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
@@ -160,11 +169,11 @@ def start_file_discovery(
     (poll with `dm run status <run-id>`).
     """
     client = get_client(profile)
-    conn_id = str(resolve_connection(client, connection).id)
+    conn_id = str(resolve_connection(client, connection, project).id)
 
     try:
         if config is not None:
-            config_id = _resolve_discovery_config_id(client, config, DiscoveryConfigType.file)
+            config_id = _resolve_discovery_config_id(client, config, DiscoveryConfigType.file, project)
             from_config = FileDataDiscoveryFromConfigRequest(
                 connection=ConnectionId(conn_id), discovery_config=config_id
             )

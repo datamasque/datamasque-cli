@@ -26,6 +26,15 @@ from datamasque_cli.fileio import (
     write_text_or_abort,
 )
 from datamasque_cli.output import print_info, print_success, print_warning, render_output
+from datamasque_cli.projects import (
+    PROJECT_OPTION_HELP,
+    in_project,
+    project_label,
+    project_names,
+    resolve_create_project,
+    resolve_optional_project,
+    resolve_target_project,
+)
 
 app = typer.Typer(help="Manage discovery configs (configurable discovery).", no_args_is_help=True)
 
@@ -34,24 +43,30 @@ def _find_by_name(
     client: DataMasqueClient,
     name: str,
     config_type: DiscoveryConfigType | None = None,
+    project: str | None = None,
 ) -> list[DiscoveryConfig]:
-    """Return all discovery configs matching `name`, optionally narrowed by `config_type`."""
+    """Return all discovery configs matching `name`, optionally narrowed by `config_type` and `--project`."""
     matches = [c for c in client.list_discovery_configs() if c.name == name]
     if config_type is not None:
         matches = [c for c in matches if c.config_type is config_type]
-    return matches
+    return in_project(matches, resolve_optional_project(client, project))
 
 
-def _require_single_matched_config_or_abort(matched_configs: list[DiscoveryConfig], name: str) -> DiscoveryConfig:
-    """Return the single discovery config matching `name`, or abort asking for `--type`."""
+def _require_single_matched_config_or_abort(
+    client: DataMasqueClient, matched_configs: list[DiscoveryConfig], name: str
+) -> DiscoveryConfig:
+    """Return the single discovery config matching `name`, or abort asking for `--type` or `--project`."""
     if not matched_configs:
         abort(f"Discovery config '{name}' not found.", code=ErrorCode.NOT_FOUND)
     if len(matched_configs) > 1:
-        options = "\n  ".join(f"id={c.id} type={c.config_type.value}" for c in matched_configs)
+        names = project_names(client)
+        options = "\n  ".join(
+            f"id={c.id} type={c.config_type.value} project={project_label(names, c.project)}" for c in matched_configs
+        )
         abort(
             f"Multiple discovery configs named '{name}':\n  {options}",
             code=ErrorCode.AMBIGUOUS,
-            hint="Pass --type database|file to disambiguate.",
+            hint="Pass --type database|file or --project to disambiguate.",
         )
     return matched_configs[0]
 
@@ -61,12 +76,14 @@ def list_configs(
     config_type: DiscoveryConfigType | None = typer.Option(
         None, "--type", "-t", help="Filter by type: database or file"
     ),
+    project: str | None = typer.Option(None, "--project", help=PROJECT_OPTION_HELP),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
     is_json: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
-    """List all discovery configs."""
+    """List all discovery configs, or those in one project."""
     client = get_client(profile)
-    configs = client.list_discovery_configs()
+    configs = in_project(client.list_discovery_configs(), resolve_optional_project(client, project))
+    names = project_names(client)
 
     if config_type is not None:
         configs = [c for c in configs if c.config_type is config_type]
@@ -74,6 +91,7 @@ def list_configs(
     data = [
         {
             "id": c.id,
+            "project": project_label(names, c.project),
             "name": c.name,
             "type": c.config_type.value,
             "valid": c.is_valid.value if c.is_valid else "unknown",
@@ -81,7 +99,7 @@ def list_configs(
         for c in configs
     ]
 
-    render_output(data, is_json=is_json, columns=["id", "name", "type", "valid"], title="Discovery Configs")
+    render_output(data, is_json=is_json, columns=["id", "project", "name", "type", "valid"], title="Discovery Configs")
 
 
 @app.command("get")
@@ -90,13 +108,16 @@ def get_config(
     config_type: DiscoveryConfigType | None = typer.Option(
         None, "--type", "-t", help="Required when two configs share a name"
     ),
+    project: str | None = typer.Option(
+        None, "--project", help="Project name or id; required when configs in two projects share a name"
+    ),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
     is_yaml: bool = typer.Option(False, "--yaml", help="Output raw YAML content only"),
     is_json: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
     """Show a discovery config's details or YAML content."""
     client = get_client(profile)
-    match = _require_single_matched_config_or_abort(_find_by_name(client, name, config_type), name)
+    match = _require_single_matched_config_or_abort(client, _find_by_name(client, name, config_type, project), name)
 
     config_id = require_id_or_abort(match.id, f"discovery config '{name}'")
     full = client.get_discovery_config(config_id)
@@ -107,6 +128,7 @@ def get_config(
 
     data: dict[str, object] = {
         "id": full.id,
+        "project": project_label(project_names(client), full.project),
         "name": full.name,
         "type": full.config_type.value,
         "valid": full.is_valid.value if full.is_valid else "unknown",
@@ -151,6 +173,7 @@ def create_config(
             "Required when the config does not yet exist; defaults to the existing type on updates."
         ),
     ),
+    project: str | None = typer.Option(None, "--project", help=PROJECT_OPTION_HELP),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Create or update a discovery config from a YAML file.
@@ -159,7 +182,7 @@ def create_config(
     type from; an update defaults to whatever the existing row is stored as.
     """
     client = get_client(profile)
-    existing = _find_by_name(client, name)
+    existing = _find_by_name(client, name, project=project)
 
     if config_type is not None:
         resolved_type = config_type
@@ -173,16 +196,22 @@ def create_config(
             hint="Pass --type database|file to create a new one.",
         )
     else:
-        options = ", ".join(c.config_type.value for c in existing)
+        names = project_names(client)
+        options = ", ".join(f"{c.config_type.value} in {project_label(names, c.project)}" for c in existing)
         abort(
             f"Multiple discovery configs named '{name}' ({options}).",
             code=ErrorCode.AMBIGUOUS,
-            hint="Pass --type database|file to pick which one to update.",
+            hint="Pass --type database|file or --project to pick which one to update.",
         )
 
     yaml_content = read_text_or_abort(file)
 
-    config = DiscoveryConfig(name=name, yaml=yaml_content, config_type=resolved_type)
+    config = DiscoveryConfig(
+        name=name,
+        yaml=yaml_content,
+        config_type=resolved_type,
+        project=resolve_create_project(client, project, [c for c in existing if c.config_type is resolved_type]),
+    )
     client.create_or_update_discovery_config(config)
     print_success(f"Discovery config '{name}' ({resolved_type.value}) created/updated.")
 
@@ -193,12 +222,15 @@ def delete_config(
     config_type: DiscoveryConfigType | None = typer.Option(
         None, "--type", "-t", help="Required when two configs share a name"
     ),
+    project: str | None = typer.Option(
+        None, "--project", help="Project name or id; required when configs in two projects share a name"
+    ),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
     is_confirmed: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ) -> None:
     """Delete a discovery config by name."""
     client = get_client(profile)
-    match = _require_single_matched_config_or_abort(_find_by_name(client, name, config_type), name)
+    match = _require_single_matched_config_or_abort(client, _find_by_name(client, name, config_type, project), name)
     config_id = require_id_or_abort(match.id, f"discovery config '{name}'")
 
     if not is_confirmed:
@@ -212,11 +244,14 @@ def delete_config(
 def validate_config(
     file: Path = typer.Option(..., "--file", "-f", help="Path to YAML config file", exists=True, readable=True),
     config_type: DiscoveryConfigType = typer.Option(..., "--type", "-t", help="Config type: database or file"),
+    project: str | None = typer.Option(
+        None, "--project", help="Project to validate in; required when the instance has more than one"
+    ),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Validate a discovery config YAML file against the DataMasque server.
 
-    Creates a temporary config to trigger server-side validation,
+    Creates a temporary config in the project to trigger server-side validation,
     then deletes it. Reports any validation errors.
 
     Note that configs over 60 KiB validate asynchronously and cannot be validated here.
@@ -231,7 +266,8 @@ def validate_config(
     temp_name = f"__dm_cli_validate_{uuid.uuid4().hex}"
 
     client = get_client(profile)
-    config = DiscoveryConfig(name=temp_name, yaml=yaml_content, config_type=config_type)
+    target = resolve_target_project(client, project)
+    config = DiscoveryConfig(name=temp_name, yaml=yaml_content, config_type=config_type, project=target.reference)
 
     try:
         created = client.create_discovery_config(config)
@@ -260,15 +296,19 @@ def show_config_status(
     config_type: DiscoveryConfigType | None = typer.Option(
         None, "--type", "-t", help="Required when two configs share a name"
     ),
+    project: str | None = typer.Option(
+        None, "--project", help="Project name or id; required when configs in two projects share a name"
+    ),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
     is_json: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
     """Show a discovery config's validation status."""
     client = get_client(profile)
-    match = _require_single_matched_config_or_abort(_find_by_name(client, name, config_type), name)
+    match = _require_single_matched_config_or_abort(client, _find_by_name(client, name, config_type, project), name)
 
     status = match.is_valid.value if match.is_valid else "unknown"
     data: dict[str, object] = {
+        "project": project_label(project_names(client), match.project),
         "name": match.name,
         "type": match.config_type.value,
         "status": status,

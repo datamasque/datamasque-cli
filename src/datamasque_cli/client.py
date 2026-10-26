@@ -16,6 +16,7 @@ from datamasque.client.models.ifm import DataMasqueIfmInstanceConfig
 
 from datamasque_cli.config import Config, Profile, load_config
 from datamasque_cli.errors import ErrorCode, abort
+from datamasque_cli.projects import in_project, require_single_or_abort, resolve_optional_project
 
 ENV_URL = "DATAMASQUE_URL"
 ENV_USERNAME = "DATAMASQUE_USERNAME"
@@ -215,10 +216,22 @@ def get_ifm_client(profile_name: str | None = None) -> DataMasqueIfmClient:
     return client
 
 
-def resolve_connection(client: DataMasqueClient, name_or_id: str) -> ConnectionConfig:
-    """Resolve a connection by name or ID via the connection listing, aborting when not found."""
+def resolve_connection(client: DataMasqueClient, name_or_id: str, project: str | None = None) -> ConnectionConfig:
+    """
+    Resolve a connection by name, in the project `--project` names if given, else by ID.
+
+    Aborts when nothing matches, or when the name matches connections in more than one project.
+    """
     connections = client.list_connections()
-    match = next((c for c in connections if c.name == name_or_id or str(c.id) == name_or_id), None)
-    if match is None:
-        abort(f"Connection '{name_or_id}' not found.", code=ErrorCode.NOT_FOUND)
-    return match
+    by_name = in_project([c for c in connections if c.name == name_or_id], resolve_optional_project(client, project))
+    if not by_name:
+        by_id = next((c for c in connections if str(c.id) == name_or_id), None)
+        if by_id is not None:
+            return by_id
+    return require_single_or_abort(
+        client,
+        by_name,
+        f"Connection '{name_or_id}'",
+        describe=lambda c: f"id={c.id}",
+        hint="Pass --project, or the connection's id, to disambiguate.",
+    )

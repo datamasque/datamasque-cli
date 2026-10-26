@@ -13,16 +13,22 @@ from typer.testing import CliRunner
 
 from datamasque_cli.errors import ExitCode
 from datamasque_cli.main import app
+from tests.conftest import DEFAULT_PROJECT_REFERENCE, with_projects
 
 MODULE = "datamasque_cli.commands.table_references"
 
 
 def _mock_client() -> MagicMock:
-    return MagicMock(spec=DataMasqueClient)
+    return with_projects(MagicMock(spec=DataMasqueClient))
 
 
 def _reference(**overrides: object) -> TableReference:
-    defaults: dict[str, object] = {"name": "customer_identities", "connection": "conn-1", "source": "in/customers.csv"}
+    defaults: dict[str, object] = {
+        "name": "customer_identities",
+        "connection": "conn-1",
+        "source": "in/customers.csv",
+        "project": DEFAULT_PROJECT_REFERENCE,
+    }
     defaults.update(overrides)
     return TableReference(**defaults)
 
@@ -48,7 +54,13 @@ def test_list_references(mock_get_client: MagicMock, runner: CliRunner) -> None:
     assert result.exit_code == 0
     payload = json.loads(result.stdout)
     assert payload == [
-        {"id": "ref-1", "name": "customer_identities", "connection": "conn-1", "source": "in/customers.csv"}
+        {
+            "id": "ref-1",
+            "project": "Default",
+            "name": "customer_identities",
+            "connection": "conn-1",
+            "source": "in/customers.csv",
+        }
     ]
 
 
@@ -97,9 +109,9 @@ def test_list_references_non_404_error_surfaces_cleanly(mock_get_client: MagicMo
 def test_get_reference(mock_get_client: MagicMock, runner: CliRunner) -> None:
     client = _mock_client()
     mock_get_client.return_value = client
-    client.get_table_reference_by_name.return_value = _reference(
-        id="ref-1", options=TableReferenceOptions(format=TableReferenceFormat.parquet)
-    )
+    client.list_table_references.return_value = [
+        _reference(id="ref-1", options=TableReferenceOptions(format=TableReferenceFormat.parquet))
+    ]
 
     result = runner.invoke(app, ["table-references", "get", "customer_identities", "--json"])
 
@@ -115,7 +127,7 @@ def test_get_reference_with_no_options_shows_null_not_fabricated_defaults(
 ) -> None:
     client = _mock_client()
     mock_get_client.return_value = client
-    client.get_table_reference_by_name.return_value = _reference(id="ref-1")
+    client.list_table_references.return_value = [_reference(id="ref-1")]
 
     result = runner.invoke(app, ["table-references", "get", "customer_identities", "--json"])
 
@@ -129,7 +141,7 @@ def test_get_reference_with_no_options_shows_null_not_fabricated_defaults(
 def test_get_reference_not_found(mock_get_client: MagicMock, runner: CliRunner) -> None:
     client = _mock_client()
     mock_get_client.return_value = client
-    client.get_table_reference_by_name.return_value = None
+    client.list_table_references.return_value = []
 
     result = runner.invoke(app, ["table-references", "get", "missing"])
 
@@ -141,7 +153,7 @@ def test_get_reference_not_found(mock_get_client: MagicMock, runner: CliRunner) 
 def test_get_reference_not_supported_by_server(mock_get_client: MagicMock, runner: CliRunner) -> None:
     client = _mock_client()
     mock_get_client.return_value = client
-    client.get_table_reference_by_name.side_effect = _api_error(HTTPStatus.NOT_FOUND)
+    client.list_table_references.side_effect = _api_error(HTTPStatus.NOT_FOUND)
 
     result = runner.invoke(app, ["table-references", "get", "customer_identities"])
 
@@ -156,7 +168,9 @@ def test_get_reference_not_supported_by_server(mock_get_client: MagicMock, runne
 def test_create_reference_by_connection_name(mock_get_client: MagicMock, runner: CliRunner) -> None:
     client = _mock_client()
     mock_get_client.return_value = client
-    client.list_connections.return_value = [SimpleNamespace(id="conn-1", name="input")]
+    client.list_connections.return_value = [
+        SimpleNamespace(id="conn-1", name="input", project=DEFAULT_PROJECT_REFERENCE)
+    ]
 
     result = runner.invoke(
         app,
@@ -183,7 +197,9 @@ def test_create_reference_by_connection_name(mock_get_client: MagicMock, runner:
 def test_create_reference_by_connection_id(mock_get_client: MagicMock, runner: CliRunner) -> None:
     client = _mock_client()
     mock_get_client.return_value = client
-    client.list_connections.return_value = [SimpleNamespace(id="conn-1", name="input")]
+    client.list_connections.return_value = [
+        SimpleNamespace(id="conn-1", name="input", project=DEFAULT_PROJECT_REFERENCE)
+    ]
 
     result = runner.invoke(
         app,
@@ -208,7 +224,9 @@ def test_create_reference_by_connection_id(mock_get_client: MagicMock, runner: C
 def test_create_reference_unknown_connection_aborts(mock_get_client: MagicMock, runner: CliRunner) -> None:
     client = _mock_client()
     mock_get_client.return_value = client
-    client.list_connections.return_value = [SimpleNamespace(id="conn-1", name="input")]
+    client.list_connections.return_value = [
+        SimpleNamespace(id="conn-1", name="input", project=DEFAULT_PROJECT_REFERENCE)
+    ]
 
     result = runner.invoke(
         app,
@@ -232,7 +250,9 @@ def test_create_reference_unknown_connection_aborts(mock_get_client: MagicMock, 
 def test_create_reference_with_csv_options(mock_get_client: MagicMock, runner: CliRunner) -> None:
     client = _mock_client()
     mock_get_client.return_value = client
-    client.list_connections.return_value = [SimpleNamespace(id="conn-1", name="input")]
+    client.list_connections.return_value = [
+        SimpleNamespace(id="conn-1", name="input", project=DEFAULT_PROJECT_REFERENCE)
+    ]
 
     result = runner.invoke(
         app,
@@ -272,7 +292,9 @@ def test_create_reference_parquet_with_csv_options_passes_through(
     """CSV options are unfiltered pass-through — the server, not the CLI, decides whether they apply."""
     client = _mock_client()
     mock_get_client.return_value = client
-    client.list_connections.return_value = [SimpleNamespace(id="conn-1", name="input")]
+    client.list_connections.return_value = [
+        SimpleNamespace(id="conn-1", name="input", project=DEFAULT_PROJECT_REFERENCE)
+    ]
 
     result = runner.invoke(
         app,
@@ -315,7 +337,9 @@ def test_create_reference_server_validation_error_surfaces_cleanly(
 ) -> None:
     client = _mock_client()
     mock_get_client.return_value = client
-    client.list_connections.return_value = [SimpleNamespace(id="conn-1", name="input")]
+    client.list_connections.return_value = [
+        SimpleNamespace(id="conn-1", name="input", project=DEFAULT_PROJECT_REFERENCE)
+    ]
     client.create_or_update_table_reference.side_effect = _api_error(
         HTTPStatus.BAD_REQUEST, "table reference with this name already exists"
     )
@@ -343,8 +367,10 @@ def test_create_reference_server_validation_error_surfaces_cleanly(
 def test_create_reference_not_supported_by_server(mock_get_client: MagicMock, runner: CliRunner) -> None:
     client = _mock_client()
     mock_get_client.return_value = client
-    client.list_connections.return_value = [SimpleNamespace(id="conn-1", name="input")]
-    client.get_table_reference_by_name.side_effect = _api_error(HTTPStatus.NOT_FOUND)
+    client.list_connections.return_value = [
+        SimpleNamespace(id="conn-1", name="input", project=DEFAULT_PROJECT_REFERENCE)
+    ]
+    client.list_table_references.side_effect = _api_error(HTTPStatus.NOT_FOUND)
 
     result = runner.invoke(
         app,
@@ -372,8 +398,10 @@ def test_create_reference_missing_on_write_is_not_reported_as_unsupported(
     """A 404 from the create/update call itself is a real failure, not evidence the endpoint is missing."""
     client = _mock_client()
     mock_get_client.return_value = client
-    client.list_connections.return_value = [SimpleNamespace(id="conn-1", name="input")]
-    client.get_table_reference_by_name.return_value = None
+    client.list_connections.return_value = [
+        SimpleNamespace(id="conn-1", name="input", project=DEFAULT_PROJECT_REFERENCE)
+    ]
+    client.list_table_references.return_value = []
     client.create_or_update_table_reference.side_effect = _api_error(HTTPStatus.NOT_FOUND, "Not found.")
 
     result = runner.invoke(
@@ -493,9 +521,9 @@ def test_create_reference_file_with_other_flags_aborts(
 def test_update_reference_merges_only_passed_fields(mock_get_client: MagicMock, runner: CliRunner) -> None:
     client = _mock_client()
     mock_get_client.return_value = client
-    client.get_table_reference_by_name.return_value = _reference(
-        id="ref-1", options=TableReferenceOptions(delimiter=",", encoding="utf-8")
-    )
+    client.list_table_references.return_value = [
+        _reference(id="ref-1", options=TableReferenceOptions(delimiter=",", encoding="utf-8"))
+    ]
 
     result = runner.invoke(
         app, ["table-references", "update", "customer_identities", "--source", "in/new.csv", "--delimiter", ";"]
@@ -516,7 +544,7 @@ def test_update_reference_format_when_options_previously_none(mock_get_client: M
     """A reference whose options were never set has no existing values to preserve on a full PUT."""
     client = _mock_client()
     mock_get_client.return_value = client
-    client.get_table_reference_by_name.return_value = _reference(id="ref-1")
+    client.list_table_references.return_value = [_reference(id="ref-1")]
 
     result = runner.invoke(app, ["table-references", "update", "customer_identities", "--format", "parquet"])
 
@@ -530,8 +558,10 @@ def test_update_reference_format_when_options_previously_none(mock_get_client: M
 def test_update_reference_connection_by_name(mock_get_client: MagicMock, runner: CliRunner) -> None:
     client = _mock_client()
     mock_get_client.return_value = client
-    client.get_table_reference_by_name.return_value = _reference(id="ref-1")
-    client.list_connections.return_value = [SimpleNamespace(id="conn-2", name="other")]
+    client.list_table_references.return_value = [_reference(id="ref-1")]
+    client.list_connections.return_value = [
+        SimpleNamespace(id="conn-2", name="other", project=DEFAULT_PROJECT_REFERENCE)
+    ]
 
     result = runner.invoke(app, ["table-references", "update", "customer_identities", "--connection", "other"])
 
@@ -545,8 +575,10 @@ def test_update_reference_connection_by_name(mock_get_client: MagicMock, runner:
 def test_update_reference_unknown_connection_aborts(mock_get_client: MagicMock, runner: CliRunner) -> None:
     client = _mock_client()
     mock_get_client.return_value = client
-    client.get_table_reference_by_name.return_value = _reference(id="ref-1")
-    client.list_connections.return_value = [SimpleNamespace(id="conn-2", name="other")]
+    client.list_table_references.return_value = [_reference(id="ref-1")]
+    client.list_connections.return_value = [
+        SimpleNamespace(id="conn-2", name="other", project=DEFAULT_PROJECT_REFERENCE)
+    ]
 
     result = runner.invoke(app, ["table-references", "update", "customer_identities", "--connection", "nope"])
 
@@ -558,12 +590,12 @@ def test_update_reference_unknown_connection_aborts(mock_get_client: MagicMock, 
 def test_update_reference_aborts_without_any_fields(mock_get_client: MagicMock, runner: CliRunner) -> None:
     client = _mock_client()
     mock_get_client.return_value = client
-    client.get_table_reference_by_name.return_value = _reference(id="ref-1")
+    client.list_table_references.return_value = [_reference(id="ref-1")]
 
     result = runner.invoke(app, ["table-references", "update", "customer_identities"])
 
     assert result.exit_code == ExitCode.INVALID_INPUT
-    client.get_table_reference_by_name.assert_not_called()
+    client.list_table_references.assert_not_called()
     client.update_table_reference.assert_not_called()
 
 
@@ -571,7 +603,7 @@ def test_update_reference_aborts_without_any_fields(mock_get_client: MagicMock, 
 def test_update_reference_aborts_when_missing(mock_get_client: MagicMock, runner: CliRunner) -> None:
     client = _mock_client()
     mock_get_client.return_value = client
-    client.get_table_reference_by_name.return_value = None
+    client.list_table_references.return_value = []
 
     result = runner.invoke(app, ["table-references", "update", "missing", "--source", "in/new.csv"])
 
@@ -583,7 +615,7 @@ def test_update_reference_aborts_when_missing(mock_get_client: MagicMock, runner
 def test_update_reference_not_supported_by_server(mock_get_client: MagicMock, runner: CliRunner) -> None:
     client = _mock_client()
     mock_get_client.return_value = client
-    client.get_table_reference_by_name.side_effect = _api_error(HTTPStatus.NOT_FOUND)
+    client.list_table_references.side_effect = _api_error(HTTPStatus.NOT_FOUND)
 
     result = runner.invoke(app, ["table-references", "update", "customer_identities", "--source", "in/new.csv"])
 
@@ -597,7 +629,7 @@ def test_update_reference_missing_on_write_is_not_reported_as_unsupported(
 ) -> None:
     client = _mock_client()
     mock_get_client.return_value = client
-    client.get_table_reference_by_name.return_value = _reference(id="ref-1")
+    client.list_table_references.return_value = [_reference(id="ref-1")]
     client.update_table_reference.side_effect = _api_error(HTTPStatus.NOT_FOUND, "Not found.")
 
     result = runner.invoke(app, ["table-references", "update", "customer_identities", "--source", "in/new.csv"])
@@ -613,43 +645,43 @@ def test_update_reference_missing_on_write_is_not_reported_as_unsupported(
 def test_delete_reference_confirmed(mock_get_client: MagicMock, runner: CliRunner) -> None:
     client = _mock_client()
     mock_get_client.return_value = client
-    client.get_table_reference_by_name.return_value = _reference(id="ref-1")
+    client.list_table_references.return_value = [_reference(id="ref-1")]
 
     result = runner.invoke(app, ["table-references", "delete", "customer_identities", "--yes"])
 
     assert result.exit_code == 0
-    client.delete_table_reference_by_name_if_exists.assert_called_once_with("customer_identities")
+    client.delete_table_reference_by_id_if_exists.assert_called_once_with("ref-1")
 
 
 @patch(f"{MODULE}.get_client")
 def test_delete_reference_declined(mock_get_client: MagicMock, runner: CliRunner) -> None:
     client = _mock_client()
     mock_get_client.return_value = client
-    client.get_table_reference_by_name.return_value = _reference(id="ref-1")
+    client.list_table_references.return_value = [_reference(id="ref-1")]
 
     result = runner.invoke(app, ["table-references", "delete", "customer_identities"], input="n\n")
 
     assert result.exit_code == ExitCode.CANCELLED
-    client.delete_table_reference_by_name_if_exists.assert_not_called()
+    client.delete_table_reference_by_id_if_exists.assert_not_called()
 
 
 @patch(f"{MODULE}.get_client")
 def test_delete_reference_aborts_when_missing(mock_get_client: MagicMock, runner: CliRunner) -> None:
     client = _mock_client()
     mock_get_client.return_value = client
-    client.get_table_reference_by_name.return_value = None
+    client.list_table_references.return_value = []
 
     result = runner.invoke(app, ["table-references", "delete", "missing", "--yes"])
 
     assert result.exit_code == ExitCode.NOT_FOUND
-    client.delete_table_reference_by_name_if_exists.assert_not_called()
+    client.delete_table_reference_by_id_if_exists.assert_not_called()
 
 
 @patch(f"{MODULE}.get_client")
 def test_delete_reference_not_supported_by_server(mock_get_client: MagicMock, runner: CliRunner) -> None:
     client = _mock_client()
     mock_get_client.return_value = client
-    client.get_table_reference_by_name.side_effect = _api_error(HTTPStatus.NOT_FOUND)
+    client.list_table_references.side_effect = _api_error(HTTPStatus.NOT_FOUND)
 
     result = runner.invoke(app, ["table-references", "delete", "customer_identities", "--yes"])
 
@@ -661,8 +693,8 @@ def test_delete_reference_not_supported_by_server(mock_get_client: MagicMock, ru
 def test_delete_reference_non_404_error_surfaces_cleanly(mock_get_client: MagicMock, runner: CliRunner) -> None:
     client = _mock_client()
     mock_get_client.return_value = client
-    client.get_table_reference_by_name.return_value = _reference(id="ref-1")
-    client.delete_table_reference_by_name_if_exists.side_effect = _api_error(HTTPStatus.CONFLICT, "referenced by a run")
+    client.list_table_references.return_value = [_reference(id="ref-1")]
+    client.delete_table_reference_by_id_if_exists.side_effect = _api_error(HTTPStatus.CONFLICT, "referenced by a run")
 
     result = runner.invoke(app, ["table-references", "delete", "customer_identities", "--yes"])
 
