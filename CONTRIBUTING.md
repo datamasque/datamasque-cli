@@ -97,7 +97,7 @@ so no DataMasque server is required.
 ### Integration tests
 
 `tests/integration/` hits a real DataMasque instance to catch the bugs unit tests can't —
-ruleset namespace collisions,
+a database and a file ruleset sharing a name,
 delete targeting,
 server-state resolution,
 and the full `run start → retry → logs --follow` lifecycle.

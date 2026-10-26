@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -33,6 +32,7 @@ from typer.testing import CliRunner
 
 from datamasque_cli.errors import ExitCode
 from datamasque_cli.main import app
+from tests.conftest import DEFAULT_PROJECT_REFERENCE, with_projects
 
 MODULE = "datamasque_cli.commands.discovery"
 
@@ -57,7 +57,7 @@ def _make_numeric_preview() -> NumericPreview:
 
 @patch(f"{MODULE}.get_client")
 def test_sdd_report_writes_to_output_file(mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.get_sdd_report.return_value = "col1,col2\na,b\n"
 
@@ -70,7 +70,7 @@ def test_sdd_report_writes_to_output_file(mock_get_client: MagicMock, runner: Cl
 
 @patch(f"{MODULE}.get_client")
 def test_sdd_report_echoes_to_stdout_without_output(mock_get_client: MagicMock, runner: CliRunner) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.get_sdd_report.return_value = "col1,col2\na,b\n"
 
@@ -82,7 +82,7 @@ def test_sdd_report_echoes_to_stdout_without_output(mock_get_client: MagicMock, 
 
 @patch(f"{MODULE}.get_client")
 def test_db_report_writes_csv_to_output_file(mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.get_db_discovery_result_report.return_value = "header\nrow1\n"
 
@@ -95,7 +95,7 @@ def test_db_report_writes_csv_to_output_file(mock_get_client: MagicMock, runner:
 
 @patch(f"{MODULE}.get_client")
 def test_db_report_writes_zip_when_split(mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     zip_bytes = b"PK\x03\x04 fake zip bytes"
     client.get_db_discovery_result_report.return_value = zip_bytes
@@ -110,7 +110,7 @@ def test_db_report_writes_zip_when_split(mock_get_client: MagicMock, runner: Cli
 
 @patch(f"{MODULE}.get_client")
 def test_db_report_split_without_output_aborts(mock_get_client: MagicMock, runner: CliRunner) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.get_db_discovery_result_report.return_value = b"PK\x03\x04 fake zip bytes"
 
@@ -138,7 +138,7 @@ def _make_file_report() -> list[FileDiscoveryResult]:
 
 @patch(f"{MODULE}.get_client")
 def test_file_report_writes_json_to_output(mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.get_file_data_discovery_report.return_value = _make_file_report()
 
@@ -152,7 +152,7 @@ def test_file_report_writes_json_to_output(mock_get_client: MagicMock, runner: C
 
 @patch(f"{MODULE}.get_client")
 def test_file_report_table_lists_locators(mock_get_client: MagicMock, runner: CliRunner) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.get_file_data_discovery_report.return_value = _make_file_report()
 
@@ -182,7 +182,7 @@ _OUTPUT_COMMANDS = [
 
 
 def _client_missing_output(client_method: str, status: int, detail: str) -> MagicMock:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     response = MagicMock(status_code=status)
     response.json.return_value = {"detail": detail}
     getattr(client, client_method).side_effect = DataMasqueApiError(f"{status}", response=response)
@@ -262,7 +262,7 @@ def test_output_missing_for_unknown_run_is_not_found(
 
 @patch(f"{MODULE}.get_client")
 def test_unexpected_api_error_is_not_swallowed(mock_get_client: MagicMock, runner: CliRunner) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     response = MagicMock(status_code=500)
     response.json.return_value = {"detail": "Report generation crashed."}
@@ -280,10 +280,10 @@ def test_unexpected_api_error_is_not_swallowed(mock_get_client: MagicMock, runne
 
 @patch(f"{MODULE}.get_client")
 def test_schema_starts_discovery_run_and_points_at_results(mock_get_client: MagicMock, runner: CliRunner) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.list_connections.return_value = [
-        SimpleNamespace(id="abc-123", name="my_db", mask_type="database"),
+        SimpleNamespace(id="abc-123", name="my_db", mask_type="database", project=DEFAULT_PROJECT_REFERENCE),
     ]
     client.start_schema_discovery_run.return_value = 99
 
@@ -298,9 +298,11 @@ def test_schema_starts_discovery_run_and_points_at_results(mock_get_client: Magi
 
 @patch(f"{MODULE}.get_client")
 def test_schema_emits_run_id_as_json(mock_get_client: MagicMock, runner: CliRunner) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
-    client.list_connections.return_value = [SimpleNamespace(id="abc-123", name="my_db", mask_type="database")]
+    client.list_connections.return_value = [
+        SimpleNamespace(id="abc-123", name="my_db", mask_type="database", project=DEFAULT_PROJECT_REFERENCE)
+    ]
     client.start_schema_discovery_run.return_value = 99
 
     result = runner.invoke(app, ["discover", "schema", "my_db", "--json"])
@@ -311,9 +313,11 @@ def test_schema_emits_run_id_as_json(mock_get_client: MagicMock, runner: CliRunn
 
 @patch(f"{MODULE}.get_client")
 def test_file_start_failure_reports_server_detail(mock_get_client: MagicMock, runner: CliRunner) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
-    client.list_connections.return_value = [SimpleNamespace(id="fs-1", name="my_files", mask_type="file")]
+    client.list_connections.return_value = [
+        SimpleNamespace(id="fs-1", name="my_files", mask_type="file", project=DEFAULT_PROJECT_REFERENCE)
+    ]
     response = MagicMock(status_code=400)
     response.json.return_value = {"detail": "Simultaneous runs on the same connection are not allowed."}
     client.start_file_data_discovery_run.side_effect = DataMasqueApiError("boom", response=response)
@@ -327,7 +331,7 @@ def test_file_start_failure_reports_server_detail(mock_get_client: MagicMock, ru
 
 @patch(f"{MODULE}.get_client")
 def test_schema_results_lists_with_flattened_rows(mock_get_client: MagicMock, runner: CliRunner) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.list_schema_discovery_results.return_value = [
         SimpleNamespace(
@@ -371,7 +375,7 @@ def test_schema_results_lists_with_flattened_rows(mock_get_client: MagicMock, ru
 
 @patch(f"{MODULE}.get_client")
 def test_schema_results_skips_unlabelled_matches(mock_get_client: MagicMock, runner: CliRunner) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.list_schema_discovery_results.return_value = [
         SimpleNamespace(
@@ -413,7 +417,7 @@ def test_schema_results_skips_unlabelled_matches(mock_get_client: MagicMock, run
 
 @patch(f"{MODULE}.get_client")
 def test_schema_results_includes_safe_data_preview_in_json(mock_get_client: MagicMock, runner: CliRunner) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.list_schema_discovery_results.return_value = [
         SimpleNamespace(
@@ -447,7 +451,7 @@ def test_schema_results_includes_safe_data_preview_in_json(mock_get_client: Magi
 def test_schema_results_hints_at_json_only_when_safe_data_preview_present(
     mock_get_client: MagicMock, runner: CliRunner, has_safe_data_preview: bool
 ) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.list_schema_discovery_results.return_value = [
         SimpleNamespace(
@@ -474,24 +478,25 @@ def test_schema_results_hints_at_json_only_when_safe_data_preview_present(
 # -- configurable-discovery run triggers ----------------------------------
 
 
-def _fake_config_lookup(**ids_by_type: str) -> Callable[[str, DiscoveryConfigType], SimpleNamespace | None]:
-    """Return a `get_discovery_config_by_name` side effect that knows only the given types."""
-
-    def lookup(name: str, config_type: DiscoveryConfigType) -> SimpleNamespace | None:
-        config_id = ids_by_type.get(config_type.value)
-        if config_id is None:
-            return None
-        return SimpleNamespace(id=config_id, name=name, config_type=config_type)
-
-    return lookup
+def _saved_configs(**ids_by_type: str) -> list[SimpleNamespace]:
+    """Return a `list_discovery_configs` result holding, under each test config name, only the given types."""
+    return [
+        SimpleNamespace(
+            id=config_id, name=name, config_type=DiscoveryConfigType(type_), project=DEFAULT_PROJECT_REFERENCE
+        )
+        for type_, config_id in ids_by_type.items()
+        for name in ("emp", "docs")
+    ]
 
 
 @patch(f"{MODULE}.get_client")
 def test_schema_with_config_runs_from_saved_config(mock_get_client: MagicMock, runner: CliRunner) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
-    client.list_connections.return_value = [SimpleNamespace(id="abc-123", name="my_db", mask_type="database")]
-    client.get_discovery_config_by_name.side_effect = _fake_config_lookup(database="cfg-1")
+    client.list_connections.return_value = [
+        SimpleNamespace(id="abc-123", name="my_db", mask_type="database", project=DEFAULT_PROJECT_REFERENCE)
+    ]
+    client.list_discovery_configs.return_value = _saved_configs(database="cfg-1")
     client.start_schema_discovery_run_from_config.return_value = 77
 
     result = runner.invoke(app, ["discover", "schema", "my_db", "--config", "emp"])
@@ -507,10 +512,12 @@ def test_schema_with_config_runs_from_saved_config(mock_get_client: MagicMock, r
 
 @patch(f"{MODULE}.get_client")
 def test_schema_config_wrong_type_aborts(mock_get_client: MagicMock, runner: CliRunner) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
-    client.list_connections.return_value = [SimpleNamespace(id="abc-123", name="my_db", mask_type="database")]
-    client.get_discovery_config_by_name.side_effect = _fake_config_lookup(file="cfg-2")
+    client.list_connections.return_value = [
+        SimpleNamespace(id="abc-123", name="my_db", mask_type="database", project=DEFAULT_PROJECT_REFERENCE)
+    ]
+    client.list_discovery_configs.return_value = _saved_configs(file="cfg-2")
 
     result = runner.invoke(app, ["discover", "schema", "my_db", "--config", "docs"])
 
@@ -522,10 +529,12 @@ def test_schema_config_wrong_type_aborts(mock_get_client: MagicMock, runner: Cli
 @patch(f"{MODULE}.get_client")
 def test_schema_config_not_found_aborts(mock_get_client: MagicMock, runner: CliRunner) -> None:
     """Neither type holds the name, so this is not-found rather than a type mismatch."""
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
-    client.list_connections.return_value = [SimpleNamespace(id="abc-123", name="my_db", mask_type="database")]
-    client.get_discovery_config_by_name.side_effect = _fake_config_lookup()
+    client.list_connections.return_value = [
+        SimpleNamespace(id="abc-123", name="my_db", mask_type="database", project=DEFAULT_PROJECT_REFERENCE)
+    ]
+    client.list_discovery_configs.return_value = _saved_configs()
 
     result = runner.invoke(app, ["discover", "schema", "my_db", "--config", "nope"])
 
@@ -535,9 +544,11 @@ def test_schema_config_not_found_aborts(mock_get_client: MagicMock, runner: CliR
 
 @patch(f"{MODULE}.get_client")
 def test_file_without_config_runs_keyword_discovery(mock_get_client: MagicMock, runner: CliRunner) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
-    client.list_connections.return_value = [SimpleNamespace(id="fs-1", name="my_files", mask_type="file")]
+    client.list_connections.return_value = [
+        SimpleNamespace(id="fs-1", name="my_files", mask_type="file", project=DEFAULT_PROJECT_REFERENCE)
+    ]
     client.start_file_data_discovery_run.return_value = 88
 
     result = runner.invoke(app, ["discover", "file", "my_files"])
@@ -552,10 +563,12 @@ def test_file_without_config_runs_keyword_discovery(mock_get_client: MagicMock, 
 
 @patch(f"{MODULE}.get_client")
 def test_file_with_config_runs_from_saved_config(mock_get_client: MagicMock, runner: CliRunner) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
-    client.list_connections.return_value = [SimpleNamespace(id="fs-1", name="my_files", mask_type="file")]
-    client.get_discovery_config_by_name.side_effect = _fake_config_lookup(file="cfg-3")
+    client.list_connections.return_value = [
+        SimpleNamespace(id="fs-1", name="my_files", mask_type="file", project=DEFAULT_PROJECT_REFERENCE)
+    ]
+    client.list_discovery_configs.return_value = _saved_configs(file="cfg-3")
     client.start_file_data_discovery_run_from_config.return_value = 89
 
     result = runner.invoke(app, ["discover", "file", "my_files", "--config", "docs"])
@@ -570,13 +583,13 @@ def test_file_with_config_runs_from_saved_config(mock_get_client: MagicMock, run
 _CONFIG_RUN_STARTS = [
     (
         ["discover", "schema", "my_db", "--config", "emp"],
-        SimpleNamespace(id="abc-123", name="my_db", mask_type="database"),
+        SimpleNamespace(id="abc-123", name="my_db", mask_type="database", project=DEFAULT_PROJECT_REFERENCE),
         {"database": "cfg-1"},
         "start_schema_discovery_run_from_config",
     ),
     (
         ["discover", "file", "my_files", "--config", "docs"],
-        SimpleNamespace(id="fs-1", name="my_files", mask_type="file"),
+        SimpleNamespace(id="fs-1", name="my_files", mask_type="file", project=DEFAULT_PROJECT_REFERENCE),
         {"file": "cfg-3"},
         "start_file_data_discovery_run_from_config",
     ),
@@ -602,10 +615,10 @@ def test_config_run_start_error_keeps_its_own_code(
     config_ids: dict[str, str],
     start_method: str,
 ) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.list_connections.return_value = [connection]
-    client.get_discovery_config_by_name.side_effect = _fake_config_lookup(**config_ids)
+    client.list_discovery_configs.return_value = _saved_configs(**config_ids)
     getattr(client, start_method).side_effect = error(
         "run failed to start: the config is unusable", response=MagicMock(status_code=400)
     )
@@ -618,9 +631,11 @@ def test_config_run_start_error_keeps_its_own_code(
 
 @patch(f"{MODULE}.get_client")
 def test_file_emits_run_id_as_json(mock_get_client: MagicMock, runner: CliRunner) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
-    client.list_connections.return_value = [SimpleNamespace(id="fs-1", name="my_files", mask_type="file")]
+    client.list_connections.return_value = [
+        SimpleNamespace(id="fs-1", name="my_files", mask_type="file", project=DEFAULT_PROJECT_REFERENCE)
+    ]
     client.start_file_data_discovery_run.return_value = 88
 
     result = runner.invoke(app, ["discover", "file", "my_files", "--json"])
@@ -631,7 +646,7 @@ def test_file_emits_run_id_as_json(mock_get_client: MagicMock, runner: CliRunner
 
 @patch(f"{MODULE}.get_client")
 def test_config_snapshot_writes_to_output(mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.get_discovery_run_config_snapshot_yaml.return_value = "# provenance\nlabels: []\n"
 

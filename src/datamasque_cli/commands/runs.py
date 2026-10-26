@@ -11,10 +11,9 @@ from pathlib import Path
 import typer
 from datamasque.client import DataMasqueClient, RunId
 from datamasque.client.exceptions import DataMasqueApiError, InvalidLibraryError, RunNotCancellableError
-from datamasque.client.models.connection import ConnectionConfig
 from datamasque.client.models.runs import MaskingRunOptions, MaskingRunRequest, RunInfo
 
-from datamasque_cli.client import get_client
+from datamasque_cli.client import get_client, resolve_connection
 from datamasque_cli.errors import ErrorCode, abort, abort_api_error, abort_if_not_found
 from datamasque_cli.fileio import write_text_or_abort
 from datamasque_cli.output import (
@@ -27,18 +26,26 @@ from datamasque_cli.output import (
     stdout_console,
     style_status,
 )
+from datamasque_cli.projects import (
+    PROJECT_OPTION_HELP,
+    in_project,
+    project_label,
+    project_names,
+    resolve_optional_project,
+)
 
 app = typer.Typer(help="Manage masking runs.", no_args_is_help=True)
 
 _POLL_INTERVAL_SECONDS = 5
 
 
-def _format_run_info(run: RunInfo, *, is_styled: bool = False) -> dict[str, object]:
-    """Extract the fields most useful for display from a `RunInfo`."""
+def _format_run_info(run: RunInfo, names: dict[str, str], *, is_styled: bool = False) -> dict[str, object]:
+    """Extract the fields most useful for display from a `RunInfo`, naming its project from `names`."""
     status = run.status.value
     destination = run.destination_connection.name if run.destination_connection else None
     return {
         "id": run.id,
+        "project": project_label(names, run.project),
         "status": style_status(status) if is_styled else status,
         "ruleset": run.ruleset_name,
         "source": run.source_connection.name,
@@ -47,11 +54,15 @@ def _format_run_info(run: RunInfo, *, is_styled: bool = False) -> dict[str, obje
     }
 
 
-def _format_run_dict(run_data: dict[str, object], *, is_styled: bool = False) -> dict[str, object]:
+def _format_run_dict(
+    run_data: dict[str, object], names: dict[str, str], *, is_styled: bool = False
+) -> dict[str, object]:
     """Extract display fields from a raw run list-response dict (not yet modelled in dm-python 1.0.0)."""
     status = str(run_data.get("status") or run_data.get("run_status") or "")
+    project = run_data.get("project")
     return {
         "id": run_data.get("id"),
+        "project": project_label(names, project if isinstance(project, str) else None),
         "status": style_status(status) if is_styled else status,
         "ruleset": run_data.get("ruleset_name"),
         "source": run_data.get("source_connection_name"),
@@ -89,36 +100,18 @@ def _get_run_log_or_abort(client: DataMasqueClient, run_id: int) -> str:
     return log
 
 
-def _resolve_connection(client: DataMasqueClient, name_or_id: str) -> ConnectionConfig:
-    """Return the connection matching `name_or_id`, preferring name."""
-    connections = client.list_connections()
-
-    match = next((c for c in connections if c.name == name_or_id), None)
-    if match is not None:
-        return match
-
-    match = next((c for c in connections if str(c.id) == name_or_id), None)
-    if match is not None:
-        return match
-
-    available = ", ".join(c.name for c in connections)
-    abort(f"Connection '{name_or_id}' not found.", code=ErrorCode.NOT_FOUND, hint=f"Available: {available}")
-
-
-def _resolve_connection_id(client: DataMasqueClient, name_or_id: str) -> str:
-    """Resolve a connection name to its UUID. Pass through if already a UUID."""
-    return str(_resolve_connection(client, name_or_id).id)
-
-
-def _resolve_ruleset_id(client: DataMasqueClient, name_or_id: str, mask_type: str | None = None) -> str:
+def _resolve_ruleset_id(
+    client: DataMasqueClient, name_or_id: str, mask_type: str | None = None, project: str | None = None
+) -> str:
     """Resolve a ruleset name to its UUID.
 
     `mask_type` is the source connection's type when called from `run start`.
-    Providing it narrows the lookup to the matching namespace, which is what
+    Providing it narrows the lookup to the matching type, which is what
     disambiguates same-named rulesets across the database/file split.
+    `project` narrows it to the project `--project` names.
     """
     rulesets = client.list_rulesets()
-    by_name = [r for r in rulesets if r.name == name_or_id]
+    by_name = in_project([r for r in rulesets if r.name == name_or_id], resolve_optional_project(client, project))
 
     if mask_type is not None:
         by_name_and_type = [r for r in by_name if r.ruleset_type.value == mask_type]
@@ -135,11 +128,12 @@ def _resolve_ruleset_id(client: DataMasqueClient, name_or_id: str, mask_type: st
     if len(by_name) == 1:
         return str(by_name[0].id)
     if len(by_name) > 1:
-        options = ", ".join(f"{r.ruleset_type.value}:{r.id}" for r in by_name)
+        names = project_names(client)
+        options = ", ".join(f"{r.ruleset_type.value}:{project_label(names, r.project)}:{r.id}" for r in by_name)
         abort(
             f"Multiple rulesets named '{name_or_id}' ({options}).",
             code=ErrorCode.AMBIGUOUS,
-            hint="Pass a UUID instead, or rename one of them.",
+            hint="Pass --project or a UUID instead, or rename one of them.",
         )
 
     by_id = next((r for r in rulesets if str(r.id) == name_or_id), None)
@@ -197,14 +191,17 @@ def start_run(
     is_background: bool = typer.Option(
         False, "--background", "-b", help="Return immediately without waiting for completion"
     ),
+    project: str | None = typer.Option(
+        None, "--project", help="Project of the ruleset and connections, when their names exist in more than one"
+    ),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
     is_json: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
     """Start a new masking run."""
     client = get_client(profile)
 
-    source = _resolve_connection(client, connection)
-    ruleset_id = _resolve_ruleset_id(client, ruleset, mask_type=source.mask_type)
+    source = resolve_connection(client, connection, project)
+    ruleset_id = _resolve_ruleset_id(client, ruleset, mask_type=source.mask_type, project=project)
 
     # Without `destination_connection` in the payload the server defaults
     # `mask_type` to `database`, so a file source produces a confusing
@@ -221,7 +218,7 @@ def start_run(
 
     destination_id: str | None = None
     if destination is not None:
-        dest = _resolve_connection(client, destination)
+        dest = resolve_connection(client, destination, project)
         if dest.mask_type != source.mask_type:
             abort(
                 f"Connection type mismatch: source '{source.name}' is {source.mask_type} "
@@ -261,13 +258,16 @@ def run_status(
     # Skip rich styling tags when output will be JSON — otherwise they'd appear
     # as literal "[status.finished]finished[/status.finished]" in the dump.
     is_styled = not should_emit_json(is_json)
-    render_output(_format_run_info(run, is_styled=is_styled), is_json=is_json, title=f"Run {run_id}")
+    render_output(
+        _format_run_info(run, project_names(client), is_styled=is_styled), is_json=is_json, title=f"Run {run_id}"
+    )
 
 
 @app.command("list")
 def list_runs(
     status_filter: str | None = typer.Option(None, "--status", "-s", help="Filter by status"),
     limit: int = typer.Option(20, "--limit", "-l", help="Maximum number of runs to show"),
+    project: str | None = typer.Option(None, "--project", help=PROJECT_OPTION_HELP),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
     is_json: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
@@ -280,6 +280,10 @@ def list_runs(
 
     # `list_runs` is not yet wrapped in datamasque-python; hit the endpoint directly.
     params = []
+    target = resolve_optional_project(client, project)
+    if target is not None:
+        # Filtered on the server, so `--limit` counts only this project's runs.
+        params.append(f"project={target.id}")
     if status_filter is not None:
         params.append(f"run_status={status_filter}")
     if limit is not None:
@@ -299,12 +303,13 @@ def list_runs(
     else:
         runs = body
     is_styled = not should_emit_json(is_json)
-    data = [_format_run_dict(r, is_styled=is_styled) for r in runs]
+    names = project_names(client)
+    data = [_format_run_dict(r, names, is_styled=is_styled) for r in runs]
 
     render_output(
         data,
         is_json=is_json,
-        columns=["id", "status", "ruleset", "source", "destination", "created"],
+        columns=["id", "project", "status", "ruleset", "source", "destination", "created"],
         title="Masking Runs",
     )
 
@@ -500,7 +505,7 @@ def _wait_for_run(
     duration = _format_duration(int(elapsed))
 
     if should_emit_json(is_json):
-        print_json(_format_run_info(run))
+        print_json(_format_run_info(run, project_names(client)))
 
     status = run.status
     summary_parts = [f"Run {run_id} {status.value} in {duration}"]

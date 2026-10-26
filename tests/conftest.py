@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+from datamasque.client.models.project import Project, ProjectId
 from datamasque.client.models.ruleset import RulesetType
 from typer.testing import CliRunner
 
@@ -31,15 +33,38 @@ def runner() -> CliRunner:
 
 @pytest.fixture()
 def mock_client() -> MagicMock:
-    """Pre-configured mock with two connections and one ruleset."""
-    client = MagicMock()
+    """Pre-configured mock with one project, two connections and one ruleset, all in `Default`."""
+    client = with_projects(MagicMock())
     client.list_connections.return_value = [
-        SimpleNamespace(id=1, name="my_conn", mask_type="database"),
-        SimpleNamespace(id=2, name="other_conn", mask_type="database"),
+        SimpleNamespace(id=1, name="my_conn", mask_type="database", project=DEFAULT_PROJECT_REFERENCE),
+        SimpleNamespace(id=2, name="other_conn", mask_type="database", project=DEFAULT_PROJECT_REFERENCE),
     ]
     client.list_rulesets.return_value = [
-        SimpleNamespace(id=10, name="my_ruleset", ruleset_type=RulesetType.database, yaml=""),
+        SimpleNamespace(
+            id=10, name="my_ruleset", ruleset_type=RulesetType.database, yaml="", project=DEFAULT_PROJECT_REFERENCE
+        ),
     ]
+    return client
+
+
+DEFAULT_PROJECT_REFERENCE = "1-default"
+
+
+def make_project(project_id: int = 1, name: str = "Default") -> Project:
+    """A project as `list_projects` returns it, with the `<id>-<slug>` reference the server derives from its name."""
+    stamp = datetime(2026, 1, 1, tzinfo=UTC)
+    return Project(
+        id=ProjectId(project_id),
+        reference=f"{project_id}-{name.lower()}",
+        name=name,
+        created=stamp,
+        updated=stamp,
+    )
+
+
+def with_projects(client: MagicMock, *projects: Project) -> MagicMock:
+    """Make `client.list_projects` return `projects`, or just `Default` when none are given."""
+    client.list_projects.return_value = list(projects) or [make_project()]
     return client
 
 
