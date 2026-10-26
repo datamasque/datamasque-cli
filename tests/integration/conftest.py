@@ -8,8 +8,10 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from datamasque.client.models.project import ProjectCreateRequest
 from typer.testing import CliRunner
 
+from datamasque_cli.client import get_client
 from datamasque_cli.errors import ErrorEnvelope
 from datamasque_cli.main import app
 
@@ -186,26 +188,42 @@ def db_yaml(tmp_path: Path) -> Path:
     return path
 
 
-DISCOVERY_TEST_NAMESPACE = "dm_int_ns"
-
-
-def create_discovery_config(runner: CliRunner, name: str, config_type: str, yaml_file: Path) -> None:
-    """Create a discovery config, and fail the test when the CLI rejects it."""
-    result = runner.invoke(
-        app,
-        ["discover", "configs", "create", "--name", name, "--type", config_type, "-f", str(yaml_file)],
-    )
+def create_discovery_config(
+    runner: CliRunner, name: str, config_type: str, yaml_file: Path, project: str | None = None
+) -> None:
+    """Create a discovery config, in `project` when given, and fail the test when the CLI rejects it."""
+    args = ["discover", "configs", "create", "--name", name, "--type", config_type, "-f", str(yaml_file)]
+    if project:
+        args += ["--project", project]
+    result = runner.invoke(app, args)
     assert result.exit_code == 0, f"could not create {config_type} config '{name}': {result.stdout}{result.stderr}"
 
 
-def create_discovery_config_library(runner: CliRunner, name: str, yaml_file: Path, namespace: str = "") -> None:
-    """Create a discovery config library, and fail the test when the CLI rejects it."""
-    result = runner.invoke(
-        app,
-        ["discover", "libraries", "create", "--name", name, "--namespace", namespace, "-f", str(yaml_file)],
-    )
-    label = f"{namespace}/{name}" if namespace else name
+def create_discovery_config_library(runner: CliRunner, name: str, yaml_file: Path, project: str | None = None) -> None:
+    """Create a discovery config library, in `project` when given, and fail the test when the CLI rejects it."""
+    args = ["discover", "libraries", "create", "--name", name, "-f", str(yaml_file)]
+    if project:
+        args += ["--project", project]
+    result = runner.invoke(app, args)
+    label = f"{project}/{name}" if project else name
     assert result.exit_code == 0, f"could not create library '{label}': {result.stdout}{result.stderr}"
+
+
+@pytest.fixture()
+def second_project() -> Iterator[str]:
+    """
+    A second project for the duration of one test, deleted afterwards into the lowest-id project.
+
+    While it exists, a create that names no project fails, so the test passes `--project` on every create.
+    """
+    client = get_client()
+    project = client.create_project(ProjectCreateRequest(name=f"dm_int_{uuid.uuid4().hex[:8]}"))
+    yield project.name
+    home = min(
+        (p for p in client.list_projects() if p.id != project.id),
+        key=lambda p: p.id,
+    )
+    client.delete_project(project, home)
 
 
 @pytest.fixture()
@@ -220,11 +238,7 @@ def discovery_config_name(runner: CliRunner) -> Iterator[str]:
 def discovery_library_name(runner: CliRunner) -> Iterator[str]:
     name = f"dm_int_{uuid.uuid4().hex[:8]}"
     yield name
-    for namespace in ("", DISCOVERY_TEST_NAMESPACE):
-        args = ["discover", "libraries", "delete", name, "--yes", "--force"]
-        if namespace:
-            args += ["--namespace", namespace]
-        runner.invoke(app, args)
+    runner.invoke(app, ["discover", "libraries", "delete", name, "--yes", "--force"])
 
 
 @pytest.fixture()

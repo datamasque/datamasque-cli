@@ -14,6 +14,7 @@ from typer.testing import CliRunner
 
 from datamasque_cli.errors import ExitCode
 from datamasque_cli.main import app
+from tests.conftest import DEFAULT_PROJECT_REFERENCE, make_project, with_projects
 
 MODULE = "datamasque_cli.commands.discovery_configs"
 
@@ -28,6 +29,7 @@ def _make_discovery_config(
 ) -> SimpleNamespace:
     """A discovery config as the server returns it, carrying its validation status."""
     return SimpleNamespace(
+        project=DEFAULT_PROJECT_REFERENCE,
         id=config_id,
         name=name,
         config_type=config_type,
@@ -51,7 +53,7 @@ def test_unknown_type_is_rejected_before_any_request(mock_get_client: MagicMock,
 
 @patch(f"{MODULE}.get_client")
 def test_list_filters_by_type(mock_get_client: MagicMock, runner: CliRunner) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.list_discovery_configs.return_value = [
         _make_discovery_config("emp", DiscoveryConfigType.database),
@@ -67,7 +69,7 @@ def test_list_filters_by_type(mock_get_client: MagicMock, runner: CliRunner) -> 
 
 @patch(f"{MODULE}.get_client")
 def test_get_yaml_fetches_full_config(mock_get_client: MagicMock, runner: CliRunner) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.list_discovery_configs.return_value = [_make_discovery_config("emp")]
     client.get_discovery_config.return_value = _make_discovery_config("emp", yaml="labels: []\n")
@@ -81,7 +83,7 @@ def test_get_yaml_fetches_full_config(mock_get_client: MagicMock, runner: CliRun
 
 @patch(f"{MODULE}.get_client")
 def test_get_ambiguous_name_aborts(mock_get_client: MagicMock, runner: CliRunner) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.list_discovery_configs.return_value = [
         _make_discovery_config("shared", DiscoveryConfigType.database, config_id="a"),
@@ -96,7 +98,7 @@ def test_get_ambiguous_name_aborts(mock_get_client: MagicMock, runner: CliRunner
 
 @patch(f"{MODULE}.get_client")
 def test_get_ambiguous_resolved_by_type(mock_get_client: MagicMock, runner: CliRunner) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.list_discovery_configs.return_value = [
         _make_discovery_config("shared", DiscoveryConfigType.database, config_id="a"),
@@ -112,7 +114,7 @@ def test_get_ambiguous_resolved_by_type(mock_get_client: MagicMock, runner: CliR
 
 @patch(f"{MODULE}.get_client")
 def test_defaults_requests_typed_default(mock_get_client: MagicMock, runner: CliRunner) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.make_request.return_value = SimpleNamespace(content=b"labels: []\n")
 
@@ -127,7 +129,7 @@ def test_defaults_requests_typed_default(mock_get_client: MagicMock, runner: Cli
 
 @patch(f"{MODULE}.get_client")
 def test_create_new_requires_type(mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.list_discovery_configs.return_value = []
     cfg = tmp_path / "cfg.yaml"
@@ -146,7 +148,7 @@ def test_create_new_requires_type(mock_get_client: MagicMock, runner: CliRunner,
 
 @patch(f"{MODULE}.get_client")
 def test_create_update_defaults_to_existing_type(mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.list_discovery_configs.return_value = [_make_discovery_config("emp", DiscoveryConfigType.database)]
     cfg = tmp_path / "cfg.yaml"
@@ -159,8 +161,29 @@ def test_create_update_defaults_to_existing_type(mock_get_client: MagicMock, run
 
 
 @patch(f"{MODULE}.get_client")
+def test_create_of_a_new_type_ignores_the_other_types_project(
+    mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path
+) -> None:
+    client = with_projects(MagicMock(), make_project(1, "Default"), make_project(2, "Finance"))
+    mock_get_client.return_value = client
+    file_config = _make_discovery_config("emp", DiscoveryConfigType.file)
+    file_config.project = "2-finance"
+    client.list_discovery_configs.return_value = [file_config]
+    cfg = tmp_path / "cfg.yaml"
+    cfg.write_text("labels: []\n")
+
+    result = runner.invoke(
+        app, ["discover", "configs", "create", "--name", "emp", "-f", str(cfg), "--type", "database"]
+    )
+
+    assert result.exit_code == ExitCode.AMBIGUOUS
+    assert "The instance has 2 active projects." in result.output
+    client.create_or_update_discovery_config.assert_not_called()
+
+
+@patch(f"{MODULE}.get_client")
 def test_delete_proceeds_when_present(mock_get_client: MagicMock, runner: CliRunner) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.list_discovery_configs.return_value = [_make_discovery_config("emp")]
 
@@ -172,7 +195,7 @@ def test_delete_proceeds_when_present(mock_get_client: MagicMock, runner: CliRun
 
 @patch(f"{MODULE}.get_client")
 def test_delete_aborts_when_missing(mock_get_client: MagicMock, runner: CliRunner) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.list_discovery_configs.return_value = []
 
@@ -184,7 +207,7 @@ def test_delete_aborts_when_missing(mock_get_client: MagicMock, runner: CliRunne
 
 @patch(f"{MODULE}.get_client")
 def test_validate_reports_valid(mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.create_discovery_config.return_value = _make_discovery_config("emp", is_valid=ValidationStatus.valid)
     cfg = tmp_path / "cfg.yaml"
@@ -203,7 +226,7 @@ def test_validate_reports_valid(mock_get_client: MagicMock, runner: CliRunner, t
 
 @patch(f"{MODULE}.get_client")
 def test_validate_invalid_exits_4(mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.create_discovery_config.return_value = _make_discovery_config(
         "emp", is_valid=ValidationStatus.invalid, validation_error="unknown label 'foo'"
@@ -223,7 +246,7 @@ def test_validate_puts_the_reason_in_the_agent_envelope(
     mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("DM_OUTPUT", "json")
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.create_discovery_config.return_value = _make_discovery_config(
         "emp", is_valid=ValidationStatus.invalid, validation_error="unknown label 'foo'"
@@ -243,7 +266,7 @@ def test_validate_puts_the_reason_in_the_agent_envelope(
 def test_validate_rejected_create_aborts_without_delete(
     mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path
 ) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     response = MagicMock()
     response.status_code = HTTPStatus.BAD_REQUEST
@@ -265,7 +288,7 @@ def test_validate_rejected_create_aborts_without_delete(
 def test_validate_warns_when_temp_config_cleanup_fails(
     mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path
 ) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.create_discovery_config.return_value = _make_discovery_config("emp", is_valid=ValidationStatus.valid)
     client.delete_discovery_config_by_id_if_exists.side_effect = DataMasqueApiError("boom", response=MagicMock())
@@ -322,7 +345,7 @@ def test_status_reports_state(
     is_valid: ValidationStatus,
     validation_error: str | None,
 ) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.list_discovery_configs.return_value = [
         _make_discovery_config("emp", is_valid=is_valid, validation_error=validation_error)

@@ -8,10 +8,10 @@ Define masking logic once, reuse it everywhere.
 
 ```bash
 dm libraries list                                    # List all libraries
-dm libraries get <name> [--namespace <ns>] [--yaml]  # Show details or YAML
-dm libraries create --name <name> --file lib.yml [--namespace <ns>]
-dm libraries delete <name> [--namespace <ns>] [--force]
-dm libraries usage <name> [--namespace <ns>]         # Which rulesets use it
+dm libraries get <name> [--project <p>] [--yaml]    # Show details or YAML
+dm libraries create --name <name> --file lib.yml [--project <p>]
+dm libraries delete <name> [--project <p>] [--force]
+dm libraries usage <name> [--project <p>]           # Which rulesets use it
 ```
 
 ## Library Structure
@@ -78,8 +78,8 @@ other:
 Rulesets reference library content using `$ref`:
 
 ```
-$ref: "<namespace>/<library_name>#<section>/<key>"
-$ref: "<library_name>#<section>/<key>"         # No namespace
+$ref: "<project>/<library_name>#<section>/<key>"
+$ref: "<library_name>#<section>/<key>"         # The ruleset's own project
 $ref: "<lib>#<section>/<key>/<nested_key>"     # Nested access
 $ref: "<lib>#<section>/0"                      # Array index
 ```

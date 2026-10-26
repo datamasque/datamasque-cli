@@ -54,11 +54,20 @@ Pass repeated `--options key=value` for server-side knobs
 
 ## Idioms and gotchas
 
-- **Ruleset namespaces.** `database` and `file` rulesets share a name
-  namespace, so `customers` can exist in both. `dm run start` reads the
+- **Database and file rulesets.** A `database` and a `file` ruleset can
+  share a name, so `customers` can exist as both. `dm run start` reads the
   source connection's type and picks the matching ruleset automatically.
   For `get` / `create` / `delete`, pass `--type database|file` only when
   two rows share the name and you need to disambiguate.
+
+- **Projects.** Every resource belongs to one project, and names are unique
+  per project (per project and type for rulesets and discovery configs). Lists show each resource's project, and `--project <name>`
+  narrows a list to one project. A create with no `--project` updates the
+  resource of that name in the one project that has it (same type, for
+  rulesets and discovery configs). Otherwise a create or upload with no
+  `--project` goes into the instance's only project, and fails with
+  `ambiguous` when there are several. A get or delete fails with `ambiguous` when the name
+  exists in two projects; pass `--project` to pick one.
 
 - **File masking needs a destination.** Database masking is in-place;
   file masking writes through to a destination connection and fails

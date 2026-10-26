@@ -187,12 +187,12 @@ See `ruleset-libraries-guide.md` for full details.
 
 ```yaml
 imports:
-  - namespace/library_name
+  - project/library_name
 
 tasks:
   - type: mask_table
     table: users
     key: id
     rules:
-      - $ref: "namespace/library_name#database_rules/email_rule"
+      - $ref: "project/library_name#database_rules/email_rule"
 ```

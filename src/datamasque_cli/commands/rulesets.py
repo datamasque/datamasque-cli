@@ -31,6 +31,15 @@ from datamasque_cli.fileio import (
     write_text_or_abort,
 )
 from datamasque_cli.output import print_info, print_success, print_warning, render_output, should_emit_json
+from datamasque_cli.projects import (
+    PROJECT_OPTION_HELP,
+    in_project,
+    project_label,
+    project_names,
+    resolve_create_project,
+    resolve_optional_project,
+    resolve_target_project,
+)
 
 app = typer.Typer(help="Manage masking rulesets.", no_args_is_help=True)
 
@@ -39,24 +48,31 @@ def _find_by_name(
     client: DataMasqueClient,
     name: str,
     mask_type: RulesetType | None = None,
+    project: str | None = None,
 ) -> list[Ruleset]:
-    """Return all rulesets matching `name`, optionally narrowed by `mask_type`."""
+    """Return all rulesets matching `name`, optionally narrowed by `mask_type` and by the project `--project` names."""
     matches = [rs for rs in client.list_rulesets() if rs.name == name]
     if mask_type is not None:
         matches = [rs for rs in matches if rs.ruleset_type == mask_type]
-    return matches
+    return in_project(matches, resolve_optional_project(client, project))
 
 
-def _require_single_matched_ruleset_or_abort(matched_rulesets: list[Ruleset], name: str) -> Ruleset:
-    """Return the single ruleset matching `name`, or abort asking for `--type`."""
+def _require_single_matched_ruleset_or_abort(
+    client: DataMasqueClient, matched_rulesets: list[Ruleset], name: str
+) -> Ruleset:
+    """Return the single ruleset matching `name`, or abort asking for `--type` or `--project`."""
     if not matched_rulesets:
         abort(f"Ruleset '{name}' not found.", code=ErrorCode.NOT_FOUND)
     if len(matched_rulesets) > 1:
-        options = "\n  ".join(f"id={rs.id} type={rs.ruleset_type.value}" for rs in matched_rulesets)
+        names = project_names(client)
+        options = "\n  ".join(
+            f"id={rs.id} type={rs.ruleset_type.value} project={project_label(names, rs.project)}"
+            for rs in matched_rulesets
+        )
         abort(
             f"Multiple rulesets named '{name}':\n  {options}",
             code=ErrorCode.AMBIGUOUS,
-            hint="Pass --type database|file to disambiguate.",
+            hint="Pass --type database|file or --project to disambiguate.",
         )
     return matched_rulesets[0]
 
@@ -64,26 +80,29 @@ def _require_single_matched_ruleset_or_abort(matched_rulesets: list[Ruleset], na
 @app.command("list")
 def list_rulesets(
     ruleset_type: RulesetType | None = typer.Option(None, "--type", "-t", help="Filter by type: database or file"),
+    project: str | None = typer.Option(None, "--project", help=PROJECT_OPTION_HELP),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
     is_json: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
-    """List all rulesets."""
+    """List all rulesets, or those in one project."""
     client = get_client(profile)
-    rulesets = client.list_rulesets()
+    rulesets = in_project(client.list_rulesets(), resolve_optional_project(client, project))
 
     if ruleset_type is not None:
         rulesets = [rs for rs in rulesets if rs.ruleset_type == ruleset_type]
 
+    names = project_names(client)
     data = [
         {
             "id": rs.id,
+            "project": project_label(names, rs.project),
             "name": rs.name,
             "type": rs.ruleset_type.value,
         }
         for rs in rulesets
     ]
 
-    render_output(data, is_json=is_json, columns=["id", "name", "type"], title="Rulesets")
+    render_output(data, is_json=is_json, columns=["id", "project", "name", "type"], title="Rulesets")
 
 
 @app.command("get")
@@ -92,13 +111,16 @@ def get_ruleset(
     ruleset_type: RulesetType | None = typer.Option(
         None, "--type", "-t", help="Required when two rulesets share a name"
     ),
+    project: str | None = typer.Option(
+        None, "--project", help="Project name or id; required when rulesets in two projects share a name"
+    ),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
     is_yaml: bool = typer.Option(False, "--yaml", help="Output raw YAML content only"),
     is_json: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
     """Show a ruleset's details or YAML content."""
     client = get_client(profile)
-    match = _require_single_matched_ruleset_or_abort(_find_by_name(client, name, ruleset_type), name)
+    match = _require_single_matched_ruleset_or_abort(client, _find_by_name(client, name, ruleset_type, project), name)
 
     # `list_rulesets` omits the YAML body for performance; fetch the single ruleset
     # to populate `yaml` via the Ruleset pydantic model's `config_yaml` alias.
@@ -111,6 +133,7 @@ def get_ruleset(
 
     data: dict[str, object] = {
         "id": full.id,
+        "project": project_label(project_names(client), full.project),
         "name": full.name,
         "type": full.ruleset_type.value,
         "yaml": full.yaml,
@@ -131,16 +154,17 @@ def create_ruleset(
             "Required when the ruleset does not yet exist; defaults to the existing type on updates."
         ),
     ),
+    project: str | None = typer.Option(None, "--project", help=PROJECT_OPTION_HELP),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Create or update a ruleset from a YAML file.
 
-    Read the server first to decide which namespace the upload belongs in. A
+    Read the server first to decide which type the upload has. A
     brand-new ruleset needs --type because there is no stored row to copy the
     type from; an update defaults to whatever the existing row is stored as.
     """
     client = get_client(profile)
-    existing = _find_by_name(client, name)
+    existing = _find_by_name(client, name, project=project)
 
     if ruleset_type is not None:
         rs_type = ruleset_type
@@ -154,15 +178,21 @@ def create_ruleset(
             hint="Pass --type database|file to create a new one.",
         )
     else:
-        options = ", ".join(r.ruleset_type.value for r in existing)
+        names = project_names(client)
+        options = ", ".join(f"{r.ruleset_type.value} in {project_label(names, r.project)}" for r in existing)
         abort(
             f"Multiple rulesets named '{name}' ({options}).",
             code=ErrorCode.AMBIGUOUS,
-            hint="Pass --type database|file to pick which one to update.",
+            hint="Pass --type database|file or --project to pick which one to update.",
         )
 
     yaml_content = read_text_or_abort(file)
-    ruleset = Ruleset(name=name, yaml=yaml_content, ruleset_type=rs_type)
+    ruleset = Ruleset(
+        name=name,
+        yaml=yaml_content,
+        ruleset_type=rs_type,
+        project=resolve_create_project(client, project, [r for r in existing if r.ruleset_type is rs_type]),
+    )
     client.create_or_update_ruleset(ruleset)
     print_success(f"Ruleset '{name}' ({rs_type.value}) created/updated.")
 
@@ -173,12 +203,15 @@ def delete_ruleset(
     ruleset_type: RulesetType | None = typer.Option(
         None, "--type", "-t", help="Required when two rulesets share a name"
     ),
+    project: str | None = typer.Option(
+        None, "--project", help="Project name or id; required when rulesets in two projects share a name"
+    ),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
     is_confirmed: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ) -> None:
     """Delete a ruleset by name."""
     client = get_client(profile)
-    match = _require_single_matched_ruleset_or_abort(_find_by_name(client, name, ruleset_type), name)
+    match = _require_single_matched_ruleset_or_abort(client, _find_by_name(client, name, ruleset_type, project), name)
     ruleset_id = require_id_or_abort(match.id, f"ruleset '{name}'")
 
     if not is_confirmed:
@@ -197,11 +230,14 @@ def validate_ruleset(
         "-t",
         help="Ruleset type: database or file",
     ),
+    project: str | None = typer.Option(
+        None, "--project", help="Project to validate in; required when the instance has more than one"
+    ),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Validate a ruleset YAML file against the DataMasque server.
 
-    Creates a temporary ruleset to trigger server-side validation,
+    Creates a temporary ruleset in the project to trigger server-side validation,
     then deletes it. Reports any validation errors.
 
     Note that rulesets over 60 KiB validate asynchronously and cannot be validated here.
@@ -217,7 +253,8 @@ def validate_ruleset(
     temp_name = f"__dm_cli_validate_{uuid.uuid4().hex}"
 
     client = get_client(profile)
-    ruleset = Ruleset(name=temp_name, yaml=yaml_content, ruleset_type=ruleset_type)
+    target = resolve_target_project(client, project)
+    ruleset = Ruleset(name=temp_name, yaml=yaml_content, ruleset_type=ruleset_type, project=target.reference)
 
     try:
         created = client.create_or_update_ruleset(ruleset)
@@ -318,16 +355,20 @@ def show_ruleset_status(
     ruleset_type: RulesetType | None = typer.Option(
         None, "--type", "-t", help="Required when two rulesets share a name"
     ),
+    project: str | None = typer.Option(
+        None, "--project", help="Project name or id; required when rulesets in two projects share a name"
+    ),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
     is_json: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
     """Show a ruleset's validation status."""
     client = get_client(profile)
-    match = _require_single_matched_ruleset_or_abort(_find_by_name(client, name, ruleset_type), name)
+    match = _require_single_matched_ruleset_or_abort(client, _find_by_name(client, name, ruleset_type, project), name)
 
     status = match.is_valid.value if match.is_valid else "unknown"
     errors = match.validation_errors or []
     data: dict[str, object] = {
+        "project": project_label(project_names(client), match.project),
         "name": match.name,
         "type": match.ruleset_type.value,
         "status": status,

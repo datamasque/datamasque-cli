@@ -23,9 +23,17 @@ from datamasque.client.models.connection import (
 from pydantic import ValidationError
 
 from datamasque_cli.client import get_client, resolve_connection
-from datamasque_cli.errors import ErrorCode, abort, abort_api_error, confirm_or_abort
+from datamasque_cli.errors import ErrorCode, abort, abort_api_error, confirm_or_abort, require_id_or_abort
 from datamasque_cli.fileio import read_json_object_or_abort
 from datamasque_cli.output import print_success, redact_sensitive_fields, render_output
+from datamasque_cli.projects import (
+    PROJECT_OPTION_HELP,
+    in_project,
+    project_label,
+    project_names,
+    resolve_create_project,
+    resolve_optional_project,
+)
 
 
 class ConnectionType(StrEnum):
@@ -92,18 +100,21 @@ def _parse_connection_type(raw: str) -> ConnectionType:
 
 @app.command("list")
 def list_connections(
+    project: str | None = typer.Option(None, "--project", help=PROJECT_OPTION_HELP),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
     is_json: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
-    """List all configured connections."""
+    """List all configured connections, or those in one project."""
     client = get_client(profile)
-    connections = client.list_connections()
+    connections = in_project(client.list_connections(), resolve_optional_project(client, project))
+    names = project_names(client)
 
     data = []
     for conn in connections:
         class_name = type(conn).__name__
         entry: dict[str, object] = {
             "id": conn.id,
+            "project": project_label(names, conn.project),
             "name": conn.name,
             "type": class_name.replace("ConnectionConfig", "").replace("Config", ""),
             "role": _format_role(conn),
@@ -113,26 +124,26 @@ def list_connections(
     render_output(
         data,
         is_json=is_json,
-        columns=["id", "name", "type", "role"],
+        columns=["id", "project", "name", "type", "role"],
         title="Connections",
     )
 
 
 @app.command("get")
 def get_connection(
-    name: str = typer.Argument(help="Connection name"),
+    name: str = typer.Argument(help="Connection name or ID"),
+    project: str | None = typer.Option(
+        None, "--project", help="Project name or id; required when connections in two projects share a name"
+    ),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
     is_json: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
     """Show details for a specific connection."""
     client = get_client(profile)
-    connections = client.list_connections()
-
-    match = next((c for c in connections if c.name == name), None)
-    if match is None:
-        abort(f"Connection '{name}' not found.", code=ErrorCode.NOT_FOUND)
+    match = resolve_connection(client, name, project)
 
     data = redact_sensitive_fields(match.model_dump())
+    data["project"] = project_label(project_names(client), match.project)
     render_output(data, is_json=is_json, title=f"Connection: {name}")
 
 
@@ -154,6 +165,7 @@ def create_connection(
     is_source: bool = typer.Option(False, "--source", help="Is a file mask source"),
     is_destination: bool = typer.Option(False, "--destination", help="Is a file mask destination"),
     bucket: str | None = typer.Option(None, help="S3 bucket name"),
+    project: str | None = typer.Option(None, "--project", help=PROJECT_OPTION_HELP),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Create or update a connection.
@@ -178,9 +190,8 @@ def create_connection(
         dm connections create --file databricks.json
     """
     client = get_client(profile)
-
     if file is not None:
-        _create_from_file(client, file)
+        _create_from_file(client, file, project)
         return
 
     if name is None or conn_type is None:
@@ -201,13 +212,14 @@ def create_connection(
         is_destination=is_destination,
         bucket=bucket,
     )
+    config.project = resolve_create_project(client, project, [c for c in client.list_connections() if c.name == name])
 
     client.create_or_update_connection(config)
     print_success(f"Connection '{name}' created/updated.")
 
 
-def _create_from_file(client: DataMasqueClient, file: Path) -> None:
-    """Create a connection from a JSON file."""
+def _create_from_file(client: DataMasqueClient, file: Path, project: str | None) -> None:
+    """Create a connection from a JSON file, in the project `--project` names when given."""
     data = read_json_object_or_abort(file)
     raw_type = data.pop("type", "database")
     if not isinstance(raw_type, str):
@@ -223,6 +235,9 @@ def _create_from_file(client: DataMasqueClient, file: Path) -> None:
         config = klass(**data)
     except ValidationError as exc:
         abort(f"{file} does not match the expected format: {exc}", code=ErrorCode.INVALID_INPUT)
+    config.project = resolve_create_project(
+        client, project, [c for c in client.list_connections() if c.name == config.name]
+    )
     client.create_or_update_connection(config)
     print_success(f"Connection '{config.name}' created/updated.")
 
@@ -293,6 +308,9 @@ def _build_connection_config(
 @app.command("test")
 def test_connection(
     name: str = typer.Argument(help="Connection name or ID to test"),
+    project: str | None = typer.Option(
+        None, "--project", help="Project name or id; required when connections in two projects share a name"
+    ),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Verify a connection can reach its target.
@@ -302,7 +320,7 @@ def test_connection(
     success, a warning, or a hard failure.
     """
     client = get_client(profile)
-    match = resolve_connection(client, name)
+    match = resolve_connection(client, name, project)
 
     try:
         response = client.make_request("POST", f"/api/connections/{match.id}/test/", data={})
@@ -320,6 +338,9 @@ def test_connection(
 @app.command("update")
 def update_connection(
     name: str = typer.Argument(help="Connection name or ID to update"),
+    project: str | None = typer.Option(
+        None, "--project", help="Project name or id; required when connections in two projects share a name"
+    ),
     host: str | None = typer.Option(None, help="New database host"),
     port: str | None = typer.Option(None, help="New database port"),
     database: str | None = typer.Option(None, help="New database name"),
@@ -335,7 +356,7 @@ def update_connection(
     references it stays intact. Pass only the fields that should change.
     """
     client = get_client(profile)
-    match = resolve_connection(client, name)
+    match = resolve_connection(client, name, project)
 
     updates: dict[str, object] = {
         key: value
@@ -364,17 +385,19 @@ def update_connection(
 
 @app.command("delete")
 def delete_connection(
-    name: str = typer.Argument(help="Connection name to delete"),
+    name: str = typer.Argument(help="Connection name or ID to delete"),
+    project: str | None = typer.Option(
+        None, "--project", help="Project name or id; required when connections in two projects share a name"
+    ),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
     is_confirmed: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ) -> None:
     """Delete a connection by name."""
     client = get_client(profile)
-    if not any(c.name == name for c in client.list_connections()):
-        abort(f"Connection '{name}' not found.", code=ErrorCode.NOT_FOUND)
+    match = resolve_connection(client, name, project)
 
     if not is_confirmed:
         confirm_or_abort(f"Delete connection '{name}'?")
 
-    client.delete_connection_by_name_if_exists(name)
+    client.delete_connection_by_id_if_exists(require_id_or_abort(match.id, f"connection '{name}'"))
     print_success(f"Connection '{name}' deleted.")

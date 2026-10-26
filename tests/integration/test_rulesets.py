@@ -49,7 +49,7 @@ def test_create_without_type_aborts_when_name_is_ambiguous(
     assert "Multiple rulesets" in result.stderr
 
 
-def test_create_with_type_updates_only_matching_namespace(
+def test_create_with_type_updates_only_the_ruleset_of_that_type(
     runner: CliRunner,
     ruleset_name: str,
     file_yaml: Path,
@@ -70,7 +70,7 @@ def test_create_with_type_updates_only_matching_namespace(
     assert "mask_table" in db_after.stdout
 
 
-def test_delete_with_type_leaves_other_namespace_intact(
+def test_delete_with_type_leaves_the_other_types_ruleset(
     runner: CliRunner,
     ruleset_name: str,
     file_yaml: Path,
