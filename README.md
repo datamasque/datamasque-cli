@@ -170,9 +170,10 @@ dm rulesets generate --file request.json          # Generate from schema
 dm rulesets generate --file req.json -o out.yaml  # Generate to file
 dm rulesets validate --file rules.yaml --type database|file  # Validate against server (YAML under 60 KiB)
 dm rulesets status <name>                         # Validation status; poll after creating YAML of 60 KiB+
-dm rulesets export-bundle -o bundle.zip           # Export rulesets + libraries + seeds
+dm rulesets export-bundle -o bundle.zip           # Export rulesets + libraries + seeds, by project
 dm rulesets import-bundle --file bundle.zip       # Import a previously exported bundle
 dm rulesets import-bundle -f bundle.zip --overwrite-rulesets --overwrite-libraries  # Replace existing entries
+dm rulesets import-bundle -f bundle.zip --fallback-project <project>  # Project for items filed under none
 ```
 
 ### Ruleset libraries
