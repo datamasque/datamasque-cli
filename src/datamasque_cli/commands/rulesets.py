@@ -38,6 +38,7 @@ from datamasque_cli.projects import (
     project_names,
     resolve_create_project,
     resolve_optional_project,
+    resolve_project,
     resolve_target_project,
 )
 
@@ -283,11 +284,11 @@ def export_bundle(
     """Export rulesets, ruleset libraries, and any referenced seed files as a ZIP bundle.
 
     Bundles only rulesets + libraries + optional seed files — not connections,
-    users, licences, or instance settings.
+    users, licences, or instance settings. Each item is filed under its project.
     """
     client = get_client(profile)
     # `export_configuration` is not yet wrapped in datamasque-python; hit the endpoint directly.
-    response = client.make_request("GET", "/api/export/v1/")
+    response = client.make_request("GET", "/api/export/v2/")
     write_bytes_or_abort(output_path, response.content)
     print_success(f"Bundle exported to {output_path}")
 
@@ -304,31 +305,43 @@ def import_bundle(
     overwrite_seeds: bool = typer.Option(
         False, "--overwrite-seeds", help="Overwrite seed files that already exist with the same name"
     ),
+    fallback_project: str | None = typer.Option(
+        None,
+        "--fallback-project",
+        help="Project name or id for the items the bundle files under no project. "
+        "Defaults to the server's default project.",
+    ),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
     is_confirmed: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ) -> None:
     """Import rulesets, ruleset libraries, and seed files from a ZIP bundle.
 
     Bundle must have been produced by `dm rulesets export-bundle` or the
-    server's `/api/export/v1/` endpoint. By default, duplicates are skipped;
-    pass `--overwrite-*` flags to replace existing entries.
+    server's export endpoint. Each item goes into the project the bundle files it
+    under; items under no project, such as those in an older bundle, go into
+    `--fallback-project`. By default, duplicates are skipped; pass `--overwrite-*`
+    flags to replace existing entries.
     """
     if not is_confirmed:
         confirm_or_abort("This will modify rulesets, libraries, and seed files. Continue?")
 
     client = get_client(profile)
-    # `/api/import/v1/` expects a multipart `zip_archive` upload plus three
-    # optional boolean overwrite flags; `import_configuration` is not yet
+    data = {
+        "overwrite_rulesets": str(overwrite_rulesets).lower(),
+        "overwrite_libraries": str(overwrite_libraries).lower(),
+        "overwrite_seed_files": str(overwrite_seeds).lower(),
+    }
+    if fallback_project is not None:
+        data["fallback_project"] = str(resolve_project(client, fallback_project).id)
+
+    # `/api/import/v2/` expects a multipart `zip_archive` upload plus the overwrite
+    # flags and an optional `fallback_project`; `import_configuration` is not yet
     # wrapped in datamasque-python, so we call `make_request` directly.
     with file.open("rb") as zip_content:
         response = client.make_request(
             "POST",
-            "/api/import/v1/",
-            data={
-                "overwrite_rulesets": str(overwrite_rulesets).lower(),
-                "overwrite_libraries": str(overwrite_libraries).lower(),
-                "overwrite_seed_files": str(overwrite_seeds).lower(),
-            },
+            "/api/import/v2/",
+            data=data,
             files=[
                 UploadFile(
                     field_name="zip_archive",
@@ -340,6 +353,10 @@ def import_bundle(
         )
 
     print_success("Bundle imported successfully.")
+    if response.headers.get("Deprecation") == "true":
+        print_warning(
+            "This bundle is in the older format. Items it files under no project went into the fallback project."
+        )
     if response.content:
         try:
             summary = response.json()
