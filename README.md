@@ -108,6 +108,28 @@ For instances with self-signed or expired TLS certificates
 pass `--insecure` to `dm auth login` to persist the toggle on the profile,
 or set `DATAMASQUE_VERIFY_SSL=false` to skip verification per call.
 
+## Projects
+
+Every connection, ruleset, library, discovery config, seed, file and table reference belongs to one project.
+This CLI needs a DataMasque version with projects (v3.26.21.0 or later); use an earlier CLI release with older versions.
+
+- `--project` takes a project name (any case) or its numeric ID.
+- List commands show each resource's project, and `--project` lists only that project's resources
+  (plus the built-in seeds, for `dm seeds list`).
+- Create, upload and validate commands put the resource in the `--project` project.
+  Without `--project`, a create updates the resource of that name in the one project that has it
+  (for rulesets and discovery configs, the one of the same type).
+  Otherwise they use the instance's only project, and fail asking for one when there are several.
+- Get, update and delete commands find a resource by name in any project.
+  When the name exists in more than one project they fail asking for `--project`.
+
+```console
+dm rulesets list --project Finance
+dm rulesets create --name customers --file rules.yaml --type database --project Finance
+dm seeds upload names.csv --project Finance
+dm run start -c finance_db -r customers --project Finance
+```
+
 ## Commands
 
 ### Authentication
@@ -148,9 +170,10 @@ dm rulesets generate --file request.json          # Generate from schema
 dm rulesets generate --file req.json -o out.yaml  # Generate to file
 dm rulesets validate --file rules.yaml --type database|file  # Validate against server (YAML under 60 KiB)
 dm rulesets status <name>                         # Validation status; poll after creating YAML of 60 KiB+
-dm rulesets export-bundle -o bundle.zip           # Export rulesets + libraries + seeds
+dm rulesets export-bundle -o bundle.zip           # Export rulesets + libraries + seeds, by project
 dm rulesets import-bundle --file bundle.zip       # Import a previously exported bundle
 dm rulesets import-bundle -f bundle.zip --overwrite-rulesets --overwrite-libraries  # Replace existing entries
+dm rulesets import-bundle -f bundle.zip --fallback-project <project>  # Project for items filed under none
 ```
 
 ### Ruleset libraries
@@ -160,11 +183,11 @@ dm libraries list                                 # List all libraries
 dm libraries get <name>                           # Show library details
 dm libraries get <name> --yaml                    # Print raw YAML only
 dm libraries create --name <n> --file lib.yaml    # Create/update from file
-dm libraries create --name <n> --file lib.yaml --namespace pii  # With namespace
+dm libraries create --name <n> --file lib.yaml --project pii   # In a given project
 dm libraries delete <name>                        # Delete a library
 dm libraries validate <name>                      # Re-validate against current server schema
 dm libraries status <name>                        # Validation status; poll after creating YAML of 60 KiB+
-dm libraries usage <name>                         # Show rulesets using it
+dm libraries usage <name>                         # Show rulesets using it, with their projects
 ```
 
 ### Table references
@@ -260,11 +283,11 @@ The same library can be imported by both database and file discovery configs.
 
 ```console
 dm discover libraries list
-dm discover libraries get <name> [--namespace org] [--yaml]
-dm discover libraries create --name <n> --namespace org -f lib.yaml
-dm discover libraries delete <name> [--namespace org] [--force]    # --force if imported by configs
-dm discover libraries validate -f lib.yaml
-dm discover libraries status <name> [--namespace org]
+dm discover libraries get <name> [--project org] [--yaml]
+dm discover libraries create --name <n> --project org -f lib.yaml
+dm discover libraries delete <name> [--project org] [--force]      # --force if imported by configs
+dm discover libraries validate -f lib.yaml [--project org]
+dm discover libraries status <name> [--project org]
 ```
 
 ### Seeds

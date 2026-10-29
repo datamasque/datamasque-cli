@@ -13,12 +13,13 @@ from typer.testing import CliRunner
 
 from datamasque_cli.errors import ExitCode
 from datamasque_cli.main import app
+from tests.conftest import DEFAULT_PROJECT_REFERENCE, make_project, with_projects
 
 MODULE = "datamasque_cli.commands.rulesets"
 
 
 def _ruleset(id_: int, name: str, rs_type: RulesetType) -> SimpleNamespace:
-    return SimpleNamespace(id=id_, name=name, ruleset_type=rs_type, yaml="")
+    return SimpleNamespace(id=id_, name=name, ruleset_type=rs_type, yaml="", project=DEFAULT_PROJECT_REFERENCE)
 
 
 def _make_ruleset_with_status(
@@ -28,6 +29,7 @@ def _make_ruleset_with_status(
 ) -> SimpleNamespace:
     """A ruleset as the server returns it, carrying its validation status."""
     return SimpleNamespace(
+        project=DEFAULT_PROJECT_REFERENCE,
         id=id_,
         name="demo",
         ruleset_type=RulesetType.database,
@@ -52,7 +54,7 @@ def test_unknown_type_is_rejected_before_any_request(mock_get_client: MagicMock,
 def test_create_requires_type_when_ruleset_is_new(
     mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path
 ) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.list_rulesets.return_value = []
 
@@ -67,7 +69,7 @@ def test_create_requires_type_when_ruleset_is_new(
 
 @patch(f"{MODULE}.get_client")
 def test_create_uses_existing_type_on_update(mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.list_rulesets.return_value = [_ruleset(1, "demo", RulesetType.file)]
 
@@ -82,10 +84,10 @@ def test_create_uses_existing_type_on_update(mock_get_client: MagicMock, runner:
 
 
 @patch(f"{MODULE}.get_client")
-def test_create_requires_type_when_both_namespaces_hold_same_name(
+def test_create_requires_type_when_database_and_file_rulesets_share_a_name(
     mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path
 ) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.list_rulesets.return_value = [
         _ruleset(1, "demo", RulesetType.database),
@@ -105,7 +107,7 @@ def test_create_requires_type_when_both_namespaces_hold_same_name(
 def test_create_honours_explicit_type_for_new_ruleset(
     mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path
 ) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.list_rulesets.return_value = []
 
@@ -126,7 +128,7 @@ def test_create_honours_explicit_type_for_new_ruleset(
 def test_create_explicit_type_overrides_existing_type(
     mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path
 ) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.list_rulesets.return_value = [_ruleset(1, "demo", RulesetType.database)]
 
@@ -143,12 +145,35 @@ def test_create_explicit_type_overrides_existing_type(
     assert args[0].ruleset_type == RulesetType.file
 
 
+@patch(f"{MODULE}.get_client")
+def test_create_of_a_new_type_ignores_the_other_types_project(
+    mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path
+) -> None:
+    client = with_projects(MagicMock(), make_project(1, "Default"), make_project(2, "Finance"))
+    mock_get_client.return_value = client
+    file_ruleset = _ruleset(1, "demo", RulesetType.file)
+    file_ruleset.project = "2-finance"
+    client.list_rulesets.return_value = [file_ruleset]
+
+    yaml_file = tmp_path / "rs.yaml"
+    yaml_file.write_text("tasks: []\n")
+
+    result = runner.invoke(
+        app,
+        ["rulesets", "create", "--name", "demo", "--file", str(yaml_file), "--type", "database"],
+    )
+
+    assert result.exit_code == ExitCode.AMBIGUOUS
+    assert "The instance has 2 active projects." in result.output
+    client.create_or_update_ruleset.assert_not_called()
+
+
 # -- get / delete disambiguation ------------------------------------------
 
 
 @patch(f"{MODULE}.get_client")
 def test_get_aborts_when_multiple_same_name_without_type(mock_get_client: MagicMock, runner: CliRunner) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.list_rulesets.return_value = [
         _ruleset(1, "demo", RulesetType.database),
@@ -161,7 +186,7 @@ def test_get_aborts_when_multiple_same_name_without_type(mock_get_client: MagicM
 
 @patch(f"{MODULE}.get_client")
 def test_get_disambiguates_with_type_flag(mock_get_client: MagicMock, runner: CliRunner) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.list_rulesets.return_value = [
         _ruleset(1, "demo", RulesetType.database),
@@ -184,7 +209,7 @@ def test_get_disambiguates_with_type_flag(mock_get_client: MagicMock, runner: Cl
 
 @patch(f"{MODULE}.get_client")
 def test_delete_only_removes_matched_type(mock_get_client: MagicMock, runner: CliRunner) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.list_rulesets.return_value = [
         _ruleset(1, "demo", RulesetType.database),
@@ -200,7 +225,7 @@ def test_delete_only_removes_matched_type(mock_get_client: MagicMock, runner: Cl
 
 @patch(f"{MODULE}.get_client")
 def test_delete_aborts_when_ambiguous(mock_get_client: MagicMock, runner: CliRunner) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.list_rulesets.return_value = [
         _ruleset(1, "demo", RulesetType.database),
@@ -215,7 +240,7 @@ def test_delete_aborts_when_ambiguous(mock_get_client: MagicMock, runner: CliRun
 
 @patch(f"{MODULE}.get_client")
 def test_delete_aborts_when_missing(mock_get_client: MagicMock, runner: CliRunner) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.list_rulesets.return_value = []
 
@@ -230,7 +255,7 @@ def test_delete_aborts_when_missing(mock_get_client: MagicMock, runner: CliRunne
 
 @patch(f"{MODULE}.get_client")
 def test_list_filters_by_type(mock_get_client: MagicMock, runner: CliRunner) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.list_rulesets.return_value = [
         _ruleset(1, "a", RulesetType.database),
@@ -249,7 +274,7 @@ def test_list_filters_by_type(mock_get_client: MagicMock, runner: CliRunner) -> 
 
 @patch(f"{MODULE}.get_client")
 def test_validate_requires_type_flag(mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
 
     yaml_file = tmp_path / "rs.yaml"
@@ -265,7 +290,7 @@ def test_validate_requires_type_flag(mock_get_client: MagicMock, runner: CliRunn
 def test_validate_uses_unique_temp_name_and_cleans_by_id(
     mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path
 ) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.create_or_update_ruleset.return_value = _make_ruleset_with_status(ValidationStatus.valid)
 
@@ -289,7 +314,7 @@ def test_validate_cleans_up_when_print_success_interrupted(
     tmp_path: Path,
 ) -> None:
     """`try/finally` guarantees the temp ruleset is deleted even if a later step raises."""
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.create_or_update_ruleset.return_value = _make_ruleset_with_status(ValidationStatus.valid)
 
@@ -303,7 +328,7 @@ def test_validate_cleans_up_when_print_success_interrupted(
 
 @patch(f"{MODULE}.get_client")
 def test_validate_warns_when_cleanup_fails(mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.create_or_update_ruleset.return_value = _make_ruleset_with_status(ValidationStatus.valid)
     client.delete_ruleset_by_id_if_exists.side_effect = DataMasqueApiError("boom", response=MagicMock())
@@ -321,7 +346,7 @@ def test_validate_warns_when_cleanup_fails(mock_get_client: MagicMock, runner: C
 def test_validate_sync_invalid_prints_errors_and_cleans_up(
     mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path
 ) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.create_or_update_ruleset.return_value = _make_ruleset_with_status(
         ValidationStatus.invalid,
@@ -348,7 +373,7 @@ def test_validate_puts_every_reason_in_the_agent_envelope(
     mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("DM_OUTPUT", "json")
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.create_or_update_ruleset.return_value = _make_ruleset_with_status(
         ValidationStatus.invalid,
@@ -371,7 +396,7 @@ def test_validate_puts_every_reason_in_the_agent_envelope(
 def test_validate_nonterminal_status_reports_valid(
     mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path, initial_status: ValidationStatus | None
 ) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.create_or_update_ruleset.return_value = _make_ruleset_with_status(initial_status)
 
@@ -389,7 +414,7 @@ def test_validate_nonterminal_status_reports_valid(
 
 @patch(f"{MODULE}.get_client")
 def test_export_bundle_writes_binary_zip(mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     mock_response = MagicMock()
     mock_response.content = b"PK\x03\x04fake-zip-bytes"
@@ -400,12 +425,12 @@ def test_export_bundle_writes_binary_zip(mock_get_client: MagicMock, runner: Cli
 
     assert result.exit_code == 0
     assert output.read_bytes() == b"PK\x03\x04fake-zip-bytes"
-    client.make_request.assert_called_once_with("GET", "/api/export/v1/")
+    client.make_request.assert_called_once_with("GET", "/api/export/v2/")
 
 
 @patch(f"{MODULE}.get_client")
 def test_import_bundle_requires_confirmation(mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
 
     bundle = tmp_path / "bundle.zip"
@@ -421,7 +446,7 @@ def test_import_bundle_requires_confirmation(mock_get_client: MagicMock, runner:
 def test_import_bundle_uploads_zip_archive_as_multipart(
     mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path
 ) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     mock_response = MagicMock()
     mock_response.content = b""
@@ -444,7 +469,7 @@ def test_import_bundle_uploads_zip_archive_as_multipart(
 
     assert result.exit_code == 0
     (call,) = client.make_request.call_args_list
-    assert call.args == ("POST", "/api/import/v1/")
+    assert call.args == ("POST", "/api/import/v2/")
     assert call.kwargs["data"] == {
         "overwrite_rulesets": "true",
         "overwrite_libraries": "false",
@@ -457,8 +482,65 @@ def test_import_bundle_uploads_zip_archive_as_multipart(
 
 
 @patch(f"{MODULE}.get_client")
+def test_import_bundle_sends_the_fallback_project_id(
+    mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path
+) -> None:
+    client = with_projects(MagicMock(), make_project(), make_project(project_id=7, name="Bank"))
+    mock_get_client.return_value = client
+    client.make_request.return_value = MagicMock(content=b"", headers={})
+
+    bundle = tmp_path / "bundle.zip"
+    bundle.write_bytes(b"PK\x03\x04")
+
+    result = runner.invoke(
+        app, ["rulesets", "import-bundle", "--file", str(bundle), "--fallback-project", "bank", "--yes"]
+    )
+
+    assert result.exit_code == 0
+    (call,) = client.make_request.call_args_list
+    assert call.kwargs["data"]["fallback_project"] == "7"
+
+
+@patch(f"{MODULE}.get_client")
+def test_import_bundle_rejects_an_unknown_fallback_project(
+    mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path
+) -> None:
+    client = with_projects(MagicMock())
+    mock_get_client.return_value = client
+
+    bundle = tmp_path / "bundle.zip"
+    bundle.write_bytes(b"PK\x03\x04")
+
+    result = runner.invoke(
+        app, ["rulesets", "import-bundle", "--file", str(bundle), "--fallback-project", "nope", "--yes"]
+    )
+
+    assert result.exit_code == ExitCode.NOT_FOUND
+    client.make_request.assert_not_called()
+
+
+@patch(f"{MODULE}.get_client")
+def test_import_bundle_warns_about_an_older_bundle(
+    mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path
+) -> None:
+    client = with_projects(MagicMock())
+    mock_get_client.return_value = client
+    client.make_request.return_value = MagicMock(content=b"", headers={"Deprecation": "true"})
+
+    bundle = tmp_path / "bundle.zip"
+    bundle.write_bytes(b"PK\x03\x04")
+
+    result = runner.invoke(app, ["rulesets", "import-bundle", "--file", str(bundle), "--yes"])
+
+    assert result.exit_code == 0
+    assert "older format" in result.output
+    (call,) = client.make_request.call_args_list
+    assert "fallback_project" not in call.kwargs["data"]
+
+
+@patch(f"{MODULE}.get_client")
 def test_system_export_alias_warns_and_delegates(mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     mock_response = MagicMock()
     mock_response.content = b"zip-body"
@@ -509,7 +591,7 @@ def test_status_reports_state(
     is_valid: ValidationStatus,
     errors: list[ValidationErrorDetails],
 ) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.list_rulesets.return_value = [_make_ruleset_with_status(is_valid, errors)]
 

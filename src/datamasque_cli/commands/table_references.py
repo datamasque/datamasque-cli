@@ -12,9 +12,18 @@ from datamasque.client.models.connection import ConnectionId
 from datamasque.client.models.table_reference import TableReference, TableReferenceFormat, TableReferenceOptions
 
 from datamasque_cli.client import get_client, resolve_connection
-from datamasque_cli.errors import ErrorCode, abort, abort_api_error, confirm_or_abort
+from datamasque_cli.errors import ErrorCode, abort, abort_api_error, confirm_or_abort, require_id_or_abort
 from datamasque_cli.fileio import read_model_or_abort
 from datamasque_cli.output import print_success, render_output
+from datamasque_cli.projects import (
+    PROJECT_OPTION_HELP,
+    in_project,
+    project_label,
+    project_names,
+    require_single_or_abort,
+    resolve_create_project,
+    resolve_optional_project,
+)
 
 app = typer.Typer(
     help=(
@@ -56,28 +65,29 @@ def _list_or_abort(client: DataMasqueClient) -> list[TableReference]:
         abort_api_error("Failed to list table references", exc)
 
 
-def _get_or_abort(client: DataMasqueClient, name: str) -> TableReference | None:
-    """Return the table reference named `name`, or `None`, or abort with the reason the lookup failed."""
-    try:
-        reference: TableReference | None = client.get_table_reference_by_name(name)
-        return reference
-    except DataMasqueApiError as exc:
-        _abort_if_unsupported(exc)
-        abort_api_error(f"Failed to look up table reference '{name}'", exc)
+def _get_or_abort(client: DataMasqueClient, name: str, project: str | None) -> TableReference:
+    """Return the table reference named `name`, in `project` or in the one project that has it, else abort."""
+    named = [ref for ref in _list_or_abort(client) if ref.name == name]
+    return require_single_or_abort(
+        client, in_project(named, resolve_optional_project(client, project)), f"Table reference '{name}'"
+    )
 
 
 @app.command("list")
 def list_references(
+    project: str | None = typer.Option(None, "--project", help=PROJECT_OPTION_HELP),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
     is_json: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
-    """List all table references."""
+    """List all table references, or those in one project."""
     client = get_client(profile)
-    references = _list_or_abort(client)
+    references = in_project(_list_or_abort(client), resolve_optional_project(client, project))
+    names = project_names(client)
 
     data = [
         {
             "id": ref.id,
+            "project": project_label(names, ref.project),
             "name": ref.name,
             "connection": ref.connection_id,
             "source": ref.source,
@@ -85,24 +95,28 @@ def list_references(
         for ref in references
     ]
 
-    render_output(data, is_json=is_json, columns=["id", "name", "connection", "source"], title="Table References")
+    render_output(
+        data, is_json=is_json, columns=["id", "project", "name", "connection", "source"], title="Table References"
+    )
 
 
 @app.command("get")
 def get_reference(
     name: str = typer.Argument(help="Table reference name"),
+    project: str | None = typer.Option(
+        None, "--project", help="Project name or id; required when references in two projects share a name"
+    ),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
     is_json: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
     """Show details for a specific table reference."""
     client = get_client(profile)
-    reference = _get_or_abort(client, name)
-    if reference is None:
-        abort(f"Table reference '{name}' not found.", code=ErrorCode.NOT_FOUND)
+    reference = _get_or_abort(client, name, project)
 
     options = reference.options
     data: dict[str, object] = {
         "id": reference.id,
+        "project": project_label(project_names(client), reference.project),
         "name": reference.name,
         "connection": reference.connection_id,
         "source": reference.source,
@@ -117,9 +131,20 @@ def get_reference(
     render_output(data, is_json=is_json, title=f"Table Reference: {name}")
 
 
-def _resolve_connection_id(client: DataMasqueClient, name_or_id: str) -> ConnectionId:
-    """Resolve a `--connection` value (name or ID) to a connection ID."""
-    return resolve_connection(client, name_or_id).id
+def _resolve_connection_id(
+    client: DataMasqueClient, name_or_id: str, project: str | None, reference_project: str | None
+) -> ConnectionId:
+    """
+    Resolve a `--connection` value (name or ID), narrowed by `--project`, to a connection ID.
+
+    Without `--project`, a connection of that name in the reference's own project is used,
+    so a name that other projects share needs no `--project`. Otherwise every project is searched.
+    """
+    if project is None:
+        own = [c for c in client.list_connections() if c.name == name_or_id and c.project == reference_project]
+        if own:
+            return own[0].id
+    return resolve_connection(client, name_or_id, project).id
 
 
 def _option_overrides(
@@ -155,6 +180,9 @@ def create_reference(
     encoding: str | None = typer.Option(None, help=f"CSV encoding {_CSV_OPTION_HELP}"),
     quotechar: str | None = typer.Option(None, help=f"CSV quote character {_CSV_OPTION_HELP}"),
     null_string: str | None = typer.Option(None, help=f"String read as null {_CSV_OPTION_HELP}"),
+    project: str | None = typer.Option(
+        None, "--project", help="Project for the reference, also used to find --connection by name"
+    ),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Create or update a table reference.
@@ -186,39 +214,37 @@ def create_reference(
                 "--file cannot be combined with --name/--connection/--source/--format/CSV-option flags.",
                 code=ErrorCode.INVALID_INPUT,
             )
-        _create_from_file(client, file)
+        _create_from_file(client, file, project)
         return
 
     if name is None or connection is None or source is None:
         abort("Provide either --file or all of --name, --connection, and --source.", code=ErrorCode.INVALID_INPUT)
 
     overrides = _option_overrides(file_format, delimiter, encoding, quotechar, null_string)
+    existing = [ref for ref in _list_or_abort(client) if ref.name == name]
+    reference_project = resolve_create_project(client, project, existing)
     reference = TableReference(
         name=name,
-        connection=_resolve_connection_id(client, connection),
+        connection=_resolve_connection_id(client, connection, project, reference_project),
         source=source,
         options=TableReferenceOptions(**overrides) if overrides else None,
+        project=reference_project,
     )
     _create_or_update(client, reference)
     print_success(f"Table reference '{name}' created/updated.")
 
 
-def _create_from_file(client: DataMasqueClient, file: Path) -> None:
-    """Create a table reference from a JSON file."""
+def _create_from_file(client: DataMasqueClient, file: Path, project: str | None) -> None:
+    """Create a table reference from a JSON file, in the project `--project` names when given."""
     reference = read_model_or_abort(file, TableReference)
+    existing = [ref for ref in _list_or_abort(client) if ref.name == reference.name]
+    reference.project = resolve_create_project(client, project, existing)
     _create_or_update(client, reference)
     print_success(f"Table reference '{reference.name}' created/updated.")
 
 
 def _create_or_update(client: DataMasqueClient, reference: TableReference) -> None:
-    """Create or update `reference`, distinguishing an unsupported server from any other failure.
-
-    `create_or_update_table_reference` itself makes two requests (a GET to look up an existing
-    reference by name, then a POST or PUT), so probe support with `_get_or_abort` first and let
-    a 404 from the create/update call surface as a plain API error instead of being misread as
-    "not supported".
-    """
-    _get_or_abort(client, reference.name)
+    """Create or update `reference`."""
     try:
         client.create_or_update_table_reference(reference)
     except DataMasqueApiError as exc:
@@ -235,6 +261,9 @@ def update_reference(
     encoding: str | None = typer.Option(None, help=f"New CSV encoding {_CSV_OPTION_HELP}"),
     quotechar: str | None = typer.Option(None, help=f"New CSV quote character {_CSV_OPTION_HELP}"),
     null_string: str | None = typer.Option(None, help=f"New null-string value {_CSV_OPTION_HELP}"),
+    project: str | None = typer.Option(
+        None, "--project", help="Project name or id; required when references in two projects share a name"
+    ),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Update selected fields on an existing table reference, preserving its ID."""
@@ -243,12 +272,10 @@ def update_reference(
         abort("Pass at least one field to update (e.g. --source, --format).", code=ErrorCode.INVALID_INPUT)
 
     client = get_client(profile)
-    reference = _get_or_abort(client, name)
-    if reference is None:
-        abort(f"Table reference '{name}' not found.", code=ErrorCode.NOT_FOUND)
+    reference = _get_or_abort(client, name, project)
 
     if connection is not None:
-        reference.connection = _resolve_connection_id(client, connection)
+        reference.connection = _resolve_connection_id(client, connection, project, reference.project)
     if source is not None:
         reference.source = source
     if overrides:
@@ -268,20 +295,21 @@ def update_reference(
 @app.command("delete")
 def delete_reference(
     name: str = typer.Argument(help="Table reference name to delete"),
+    project: str | None = typer.Option(
+        None, "--project", help="Project name or id; required when references in two projects share a name"
+    ),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
     is_confirmed: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ) -> None:
     """Delete a table reference by name."""
     client = get_client(profile)
-    reference = _get_or_abort(client, name)
-    if reference is None:
-        abort(f"Table reference '{name}' not found.", code=ErrorCode.NOT_FOUND)
+    reference = _get_or_abort(client, name, project)
 
     if not is_confirmed:
         confirm_or_abort(f"Delete table reference '{name}'?")
 
     try:
-        client.delete_table_reference_by_name_if_exists(name)
+        client.delete_table_reference_by_id_if_exists(require_id_or_abort(reference.id, f"table reference '{name}'"))
     except DataMasqueApiError as exc:
         abort_api_error(f"Failed to delete table reference '{name}'", exc)
     print_success(f"Table reference '{name}' deleted.")

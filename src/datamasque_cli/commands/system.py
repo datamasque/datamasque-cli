@@ -94,6 +94,7 @@ def import_config(
         overwrite_rulesets=False,
         overwrite_libraries=False,
         overwrite_seeds=False,
+        fallback_project=None,
         profile=profile,
         is_confirmed=is_confirmed,
     )
