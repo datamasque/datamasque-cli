@@ -131,8 +131,19 @@ def get_reference(
     render_output(data, is_json=is_json, title=f"Table Reference: {name}")
 
 
-def _resolve_connection_id(client: DataMasqueClient, name_or_id: str, project: str | None) -> ConnectionId:
-    """Resolve a `--connection` value (name or ID), narrowed by `--project`, to a connection ID."""
+def _resolve_connection_id(
+    client: DataMasqueClient, name_or_id: str, project: str | None, reference_project: str | None
+) -> ConnectionId:
+    """
+    Resolve a `--connection` value (name or ID), narrowed by `--project`, to a connection ID.
+
+    Without `--project`, a connection of that name in the reference's own project is used,
+    so a name that other projects share needs no `--project`. Otherwise every project is searched.
+    """
+    if project is None:
+        own = [c for c in client.list_connections() if c.name == name_or_id and c.project == reference_project]
+        if own:
+            return own[0].id
     return resolve_connection(client, name_or_id, project).id
 
 
@@ -211,12 +222,13 @@ def create_reference(
 
     overrides = _option_overrides(file_format, delimiter, encoding, quotechar, null_string)
     existing = [ref for ref in _list_or_abort(client) if ref.name == name]
+    reference_project = resolve_create_project(client, project, existing)
     reference = TableReference(
         name=name,
-        connection=_resolve_connection_id(client, connection, project),
+        connection=_resolve_connection_id(client, connection, project, reference_project),
         source=source,
         options=TableReferenceOptions(**overrides) if overrides else None,
-        project=resolve_create_project(client, project, existing),
+        project=reference_project,
     )
     _create_or_update(client, reference)
     print_success(f"Table reference '{name}' created/updated.")
@@ -232,14 +244,7 @@ def _create_from_file(client: DataMasqueClient, file: Path, project: str | None)
 
 
 def _create_or_update(client: DataMasqueClient, reference: TableReference) -> None:
-    """Create or update `reference`, distinguishing an unsupported server from any other failure.
-
-    `create_or_update_table_reference` itself makes two requests (a GET to look up an existing
-    reference by name, then a POST or PUT), so probe support with `_list_or_abort` first and let
-    a 404 from the create/update call surface as a plain API error instead of being misread as
-    "not supported".
-    """
-    _list_or_abort(client)
+    """Create or update `reference`."""
     try:
         client.create_or_update_table_reference(reference)
     except DataMasqueApiError as exc:
@@ -270,7 +275,7 @@ def update_reference(
     reference = _get_or_abort(client, name, project)
 
     if connection is not None:
-        reference.connection = _resolve_connection_id(client, connection, project)
+        reference.connection = _resolve_connection_id(client, connection, project, reference.project)
     if source is not None:
         reference.source = source
     if overrides:
