@@ -13,7 +13,7 @@ from typer.testing import CliRunner
 
 from datamasque_cli.errors import ExitCode
 from datamasque_cli.main import app
-from tests.conftest import DEFAULT_PROJECT_REFERENCE, with_projects
+from tests.conftest import DEFAULT_PROJECT_REFERENCE, make_project, with_projects
 
 MODULE = "datamasque_cli.commands.table_references"
 
@@ -569,6 +569,74 @@ def test_update_reference_connection_by_name(mock_get_client: MagicMock, runner:
     updated = client.update_table_reference.call_args[0][0]
     assert updated.id == "ref-1"
     assert updated.connection == "conn-2"
+
+
+def _shared_connection_names(client: MagicMock) -> None:
+    """Give `Default` and `Finance` a connection each named `input`, and only `Finance` one named `archive`."""
+    with_projects(client, make_project(1, "Default"), make_project(2, "Finance"))
+    client.list_connections.return_value = [
+        SimpleNamespace(id="conn-default", name="input", project=DEFAULT_PROJECT_REFERENCE),
+        SimpleNamespace(id="conn-finance", name="input", project="2-finance"),
+        SimpleNamespace(id="conn-archive", name="archive", project="2-finance"),
+    ]
+
+
+@patch(f"{MODULE}.get_client")
+def test_update_reference_connection_prefers_the_references_own_project(
+    mock_get_client: MagicMock, runner: CliRunner
+) -> None:
+    client = _mock_client()
+    mock_get_client.return_value = client
+    _shared_connection_names(client)
+    client.list_table_references.return_value = [_reference(id="ref-1", project="2-finance")]
+
+    for connection, expected in (("input", "conn-finance"), ("archive", "conn-archive")):
+        result = runner.invoke(app, ["table-references", "update", "customer_identities", "--connection", connection])
+
+        assert result.exit_code == 0, result.output
+        assert client.update_table_reference.call_args[0][0].connection == expected
+
+
+@patch(f"{MODULE}.get_client")
+def test_update_reference_connection_in_another_project_only_is_found(
+    mock_get_client: MagicMock, runner: CliRunner
+) -> None:
+    client = _mock_client()
+    mock_get_client.return_value = client
+    _shared_connection_names(client)
+    client.list_table_references.return_value = [_reference(id="ref-1")]
+
+    result = runner.invoke(app, ["table-references", "update", "customer_identities", "--connection", "archive"])
+
+    assert result.exit_code == 0, result.output
+    assert client.update_table_reference.call_args[0][0].connection == "conn-archive"
+
+
+@patch(f"{MODULE}.get_client")
+def test_create_reference_connection_prefers_the_target_project(mock_get_client: MagicMock, runner: CliRunner) -> None:
+    """An update through `create` with no `--project` targets the existing reference's project, and so its connection."""
+    client = _mock_client()
+    mock_get_client.return_value = client
+    _shared_connection_names(client)
+    client.list_table_references.return_value = [_reference(id="ref-1", project="2-finance")]
+
+    result = runner.invoke(
+        app,
+        [
+            "table-references",
+            "create",
+            "--name",
+            "customer_identities",
+            "--connection",
+            "input",
+            "--source",
+            "in/customers.csv",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    created = client.create_or_update_table_reference.call_args[0][0]
+    assert (created.connection, created.project) == ("conn-finance", "2-finance")
 
 
 @patch(f"{MODULE}.get_client")
