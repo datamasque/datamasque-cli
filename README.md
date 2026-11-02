@@ -203,6 +203,21 @@ dm table-references update <name> --delimiter ';' --null-string NULL    # Any CS
 dm table-references delete <name>                                       # Delete a table reference
 ```
 
+### Projects
+
+```console
+dm projects list                                    # id, name, description, created
+dm projects list --include-deleted                  # Adds deleted projects, with a deleted column
+dm projects get <name-or-id>                        # Show a project's details
+dm projects create --name <name> --description "<text>"
+dm projects update <name-or-id> --name <new-name>   # Rename; --description changes the description
+dm projects delete <name-or-id> --to <name-or-id>   # Move every resource to the --to project, then delete
+dm projects delete <name-or-id> --to <name-or-id> --check  # Only list what would stop the delete
+```
+
+Creating, renaming and deleting projects needs an admin user.
+Renaming makes rulesets and configurations that import one of the project's libraries by the old project name invalid.
+
 ### In-flight masking
 
 The IFM service runs alongside the admin server,
