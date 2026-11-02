@@ -218,6 +218,18 @@ dm projects delete <name-or-id> --to <name-or-id> --check  # Only list what woul
 Creating, renaming and deleting projects needs an admin user.
 Renaming makes rulesets and configurations that import one of the project's libraries by the old project name invalid.
 
+### Moving resources
+
+```console
+dm resources move --project Finance --to Archive                # Every resource in Finance
+dm resources move customers orders --type rulesets --to Archive # Rulesets with these exact names, from any project
+dm resources move --search payroll --to HR --check              # Only list the matches and what would stop them moving
+```
+
+Resources move with their files and runs. `--project`, `--type`, `--search` and names combine; pass at least one.
+A resource that clashes with the destination (same name, or a file in the way) stays where it is, the others move,
+and the command exits with the `conflict` code, listing each one that stayed.
+
 ### In-flight masking
 
 The IFM service runs alongside the admin server,

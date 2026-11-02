@@ -69,7 +69,9 @@ Pass repeated `--options key=value` for server-side knobs
   `ambiguous` when there are several. A get or delete fails with `ambiguous` when the name
   exists in two projects; pass `--project` to pick one.
   `dm projects` creates, renames and deletes projects (delete needs `--to`, the
-  project that takes its resources).
+  project that takes its resources). `dm resources move --to <project>` moves
+  resources selected by `--project`, `--type`, `--search` or exact names; it
+  exits `conflict` when any stayed behind. Add `--check` to only preview.
 
 - **File masking needs a destination.** Database masking is in-place;
   file masking writes through to a destination connection and fails
