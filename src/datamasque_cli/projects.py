@@ -23,15 +23,19 @@ class ProjectScoped(Protocol):
 ScopedT = TypeVar("ScopedT", bound=ProjectScoped)
 
 
-def resolve_project(client: DataMasqueClient, name_or_id: str) -> Project:
-    """Return the active project named `name_or_id`, ignoring case, or with that numeric id."""
-    projects = client.list_projects()
+def get_named_project(projects: Sequence[Project], name_or_id: str) -> Project:
+    """Return the project in `projects` named `name_or_id`, ignoring case, or with that numeric id."""
     match = next((p for p in projects if p.name.casefold() == name_or_id.casefold()), None)
     if match is None and name_or_id.isdigit():
         match = next((p for p in projects if p.id == int(name_or_id)), None)
     if match is None:
         abort(f"Project '{name_or_id}' not found.", code=ErrorCode.NOT_FOUND)
     return match
+
+
+def resolve_project(client: DataMasqueClient, name_or_id: str) -> Project:
+    """Return the active project named `name_or_id`, ignoring case, or with that numeric id."""
+    return get_named_project(client.list_projects(), name_or_id)
 
 
 def resolve_optional_project(client: DataMasqueClient, name_or_id: str | None) -> Project | None:

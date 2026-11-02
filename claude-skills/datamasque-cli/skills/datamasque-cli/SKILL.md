@@ -68,6 +68,8 @@ Pass repeated `--options key=value` for server-side knobs
   `--project` goes into the instance's only project, and fails with
   `ambiguous` when there are several. A get or delete fails with `ambiguous` when the name
   exists in two projects; pass `--project` to pick one.
+  `dm projects` creates, renames and deletes projects (delete needs `--to`, the
+  project that takes its resources).
 
 - **File masking needs a destination.** Database masking is in-place;
   file masking writes through to a destination connection and fails

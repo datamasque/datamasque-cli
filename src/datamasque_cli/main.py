@@ -27,6 +27,7 @@ from datamasque_cli.commands import (
     discovery,
     files,
     ifm,
+    projects,
     ruleset_libraries,
     rulesets,
     runs,
@@ -65,6 +66,7 @@ app.add_typer(system.app, name="system")
 app.add_typer(ruleset_libraries.app, name="libraries")
 app.add_typer(ifm.app, name="ifm")
 app.add_typer(table_references.app, name="table-references")
+app.add_typer(projects.app, name="projects")
 
 
 @app.command()
