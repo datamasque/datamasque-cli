@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from datamasque.client.exceptions import DataMasqueApiError, ProjectDeleteConflictError
 from datamasque.client.models.project import (
+    Project,
     ProjectCreateRequest,
     ProjectDeleteConflict,
     ProjectDeleteConflictReason,
@@ -41,6 +42,13 @@ def _api_error(status: HTTPStatus, detail: str) -> DataMasqueApiError:
     return DataMasqueApiError(detail, response=response)
 
 
+def with_deleted_projects(client: MagicMock, *deleted: Project) -> None:
+    """Make `list_projects` return `Default` and `Finance`, and the `deleted` projects first when they are included."""
+    client.list_projects.side_effect = lambda include_archived=False: (
+        [*deleted, DEFAULT, FINANCE] if include_archived else [DEFAULT, FINANCE]
+    )
+
+
 @pytest.fixture()
 def client() -> Iterator[MagicMock]:
     client = with_projects(MagicMock(), DEFAULT, FINANCE)
@@ -57,17 +65,15 @@ def test_list_shows_the_active_projects(client: MagicMock, runner: CliRunner) ->
 
 
 def test_list_include_deleted_marks_the_deleted_projects(client: MagicMock, runner: CliRunner) -> None:
-    client.list_projects.side_effect = lambda include_archived=False: (
-        [DEFAULT, FINANCE, OLD] if include_archived else [DEFAULT, FINANCE]
-    )
+    with_deleted_projects(client, OLD)
 
     result = runner.invoke(app, ["projects", "list", "--include-deleted", "--json"])
 
     assert result.exit_code == 0
     assert [(p["name"], p["deleted"]) for p in json.loads(result.stdout)] == [
+        ("Old", True),
         ("Default", False),
         ("Finance", False),
-        ("Old", True),
     ]
 
 
@@ -76,7 +82,39 @@ def test_get_finds_a_project_by_name_in_any_case_or_by_id(client: MagicMock, run
     result = runner.invoke(app, ["projects", "get", given, "--json"])
 
     assert result.exit_code == 0
-    assert json.loads(result.stdout)["name"] == "Finance"
+    found = json.loads(result.stdout)
+    assert (found["name"], found["deleted"]) == ("Finance", False)
+
+
+def test_get_finds_a_deleted_project_by_id(client: MagicMock, runner: CliRunner) -> None:
+    with_deleted_projects(client, OLD)
+
+    result = runner.invoke(app, ["projects", "get", "3", "--json"])
+
+    assert result.exit_code == 0
+    found = json.loads(result.stdout)
+    assert (found["id"], found["name"], found["deleted"]) == (3, "Old", True)
+
+
+def test_get_by_name_finds_the_active_project_not_a_deleted_one_of_that_name(
+    client: MagicMock, runner: CliRunner
+) -> None:
+    with_deleted_projects(client, make_project(4, "Finance"))
+
+    result = runner.invoke(app, ["projects", "get", "finance", "--json"])
+
+    assert result.exit_code == 0
+    found = json.loads(result.stdout)
+    assert (found["id"], found["deleted"]) == (2, False)
+
+
+def test_get_of_an_unknown_id_is_not_found(client: MagicMock, runner: CliRunner) -> None:
+    with_deleted_projects(client, OLD)
+
+    result = runner.invoke(app, ["projects", "get", "99"])
+
+    assert result.exit_code == ExitCode.NOT_FOUND
+    assert result.stderr == "Error: Project '99' not found.\n"
 
 
 def test_get_of_an_unknown_project_is_not_found(client: MagicMock, runner: CliRunner) -> None:

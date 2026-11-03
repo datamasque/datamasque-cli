@@ -23,11 +23,17 @@ class ProjectScoped(Protocol):
 ScopedT = TypeVar("ScopedT", bound=ProjectScoped)
 
 
-def get_named_project(projects: Sequence[Project], name_or_id: str) -> Project:
-    """Return the project in `projects` named `name_or_id`, ignoring case, or with that numeric id."""
+def find_named_project(projects: Sequence[Project], name_or_id: str) -> Project | None:
+    """Return the project in `projects` named `name_or_id`, ignoring case, or with that numeric id, else `None`."""
     match = next((p for p in projects if p.name.casefold() == name_or_id.casefold()), None)
     if match is None and name_or_id.isdigit():
         match = next((p for p in projects if p.id == int(name_or_id)), None)
+    return match
+
+
+def get_named_project(projects: Sequence[Project], name_or_id: str) -> Project:
+    """Return the project in `projects` named `name_or_id`, ignoring case, or with that numeric id."""
+    match = find_named_project(projects, name_or_id)
     if match is None:
         abort(f"Project '{name_or_id}' not found.", code=ErrorCode.NOT_FOUND)
     return match

@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import typer
+from datamasque.client import DataMasqueClient
 from datamasque.client.exceptions import DataMasqueApiError, ProjectDeleteConflictError
 from datamasque.client.models.project import Project, ProjectCreateRequest, ProjectUpdateRequest
 
 from datamasque_cli.client import get_client
 from datamasque_cli.errors import ErrorCode, abort, abort_api_error, confirm_or_abort
 from datamasque_cli.output import print_success, render_output
-from datamasque_cli.projects import PROJECT_OPTION_HELP, get_named_project, resolve_project
+from datamasque_cli.projects import PROJECT_OPTION_HELP, find_named_project, get_named_project, resolve_project
 
 app = typer.Typer(help="Manage projects.", no_args_is_help=True)
 
@@ -23,6 +24,26 @@ def _build_project_row(project: Project) -> dict[str, object]:
         "description": project.description,
         "created": project.created,
     }
+
+
+def _find_project_for_get(client: DataMasqueClient, name_or_id: str) -> tuple[Project, bool]:
+    """
+    Return the project `name_or_id` names, and whether it is deleted.
+
+    A name resolves among the active projects only, because a deleted project can share an active project's name.
+    An id that no active project has also finds a deleted project, as `list --include-deleted` shows it.
+    """
+    active = client.list_projects()
+    found = find_named_project(active, name_or_id)
+    if found is not None:
+        return found, False
+
+    deleted = next(
+        (project for project in client.list_projects(include_archived=True) if str(project.id) == name_or_id), None
+    )
+    if deleted is None:
+        abort(f"Project '{name_or_id}' not found.", code=ErrorCode.NOT_FOUND)
+    return deleted, True
 
 
 @app.command("list")
@@ -53,10 +74,10 @@ def get_project(
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
     is_json: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
-    """Show a project's details."""
+    """Show a project's details, or a deleted project's by its id."""
     client = get_client(profile)
-    found = resolve_project(client, project)
-    data = {**_build_project_row(found), "updated": found.updated}
+    found, is_deleted = _find_project_for_get(client, project)
+    data = {**_build_project_row(found), "updated": found.updated, "deleted": is_deleted}
     render_output(data, is_json=is_json, title=f"Project: {found.name}")
 
 
