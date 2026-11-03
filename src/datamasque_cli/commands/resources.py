@@ -6,7 +6,7 @@ import typer
 from datamasque.client import DataMasqueClient
 from datamasque.client.exceptions import DataMasqueApiError
 from datamasque.client.models.project import Project
-from datamasque.client.models.resource import Resource
+from datamasque.client.models.resource import Resource, ResourceMoveConflict
 from datamasque.client.models.resource_type import ResourceTypeName
 
 from datamasque_cli.client import get_client
@@ -22,6 +22,11 @@ MOVE_CHECK_CONFLICT_MESSAGE = "Some resources would not move"
 
 def _describe_resource_count(count: int) -> str:
     return f"{count} resource" if count == 1 else f"{count} resources"
+
+
+def _get_conflict_details(conflicts: list[ResourceMoveConflict]) -> list[str]:
+    """Return each conflict's detail once, in order, since resources that clash the same way share a detail."""
+    return list(dict.fromkeys(conflict.detail for conflict in conflicts))
 
 
 def _get_resources_to_move(
@@ -117,7 +122,7 @@ def move_resources(
         except DataMasqueApiError as exc:
             abort_api_error("Failed to check the move", exc)
         if conflicts:
-            abort(MOVE_CHECK_CONFLICT_MESSAGE, code=ErrorCode.CONFLICT, details=[c.detail for c in conflicts])
+            abort(MOVE_CHECK_CONFLICT_MESSAGE, code=ErrorCode.CONFLICT, details=_get_conflict_details(conflicts))
         print_success(f"All {_describe_resource_count(len(rows))} can move to '{target.name}'.")
         return
 
@@ -130,9 +135,10 @@ def move_resources(
         abort_api_error(f"Failed to move resources to '{target.name}'", exc)
 
     if result.conflicts:
-        abort(
-            f"{MOVE_CONFLICT_MESSAGE}; {result.moved} moved to '{target.name}'",
-            code=ErrorCode.CONFLICT,
-            details=[c.detail for c in result.conflicts],
+        message = (
+            f"{MOVE_CONFLICT_MESSAGE}; {result.moved} moved to '{target.name}'"
+            if result.moved
+            else f"No resources moved to '{target.name}'"
         )
+        abort(message, code=ErrorCode.CONFLICT, details=_get_conflict_details(result.conflicts))
     print_success(f"Moved {_describe_resource_count(result.moved)} to '{target.name}'.")

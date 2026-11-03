@@ -117,6 +117,25 @@ def test_move_that_leaves_resources_behind_names_them_and_fails(client: MagicMoc
     )
 
 
+def test_move_that_moves_nothing_says_none_moved(client: MagicMock, runner: CliRunner) -> None:
+    client.move_resources.return_value = ResourceMoveResult(moved=0, conflicts=[CUSTOMERS_CLASH])
+
+    result = runner.invoke(app, ["resources", "move", "--project", "finance", "--to", "default", "-y"])
+
+    assert result.exit_code == ExitCode.CONFLICT
+    assert result.stderr == "Error: No resources moved to 'Default':\n  Ruleset \"customers\" exists.\n"
+
+
+def test_move_lists_a_detail_shared_by_several_conflicts_once(client: MagicMock, runner: CliRunner) -> None:
+    orders_clash = CUSTOMERS_CLASH.model_copy(update={"id": "r2", "name": "orders"})
+    client.get_resource_move_conflicts.return_value = [CUSTOMERS_CLASH, orders_clash]
+
+    result = runner.invoke(app, ["resources", "move", "--project", "finance", "--to", "default", "--check"])
+
+    assert result.exit_code == ExitCode.CONFLICT
+    assert result.stderr == 'Error: Some resources would not move:\n  Ruleset "customers" exists.\n'
+
+
 def test_move_declined_at_the_prompt_moves_nothing(client: MagicMock, runner: CliRunner) -> None:
     result = runner.invoke(app, ["resources", "move", "--project", "finance", "--to", "default"], input="n\n")
 
