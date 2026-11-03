@@ -28,9 +28,9 @@ from datamasque_cli.fileio import (
 from datamasque_cli.output import print_info, print_success, print_warning, render_output
 from datamasque_cli.projects import (
     PROJECT_OPTION_HELP,
-    in_project,
+    filter_by_project,
+    get_project_names_by_reference,
     project_label,
-    project_names,
     resolve_create_project,
     resolve_optional_project,
     resolve_target_project,
@@ -49,7 +49,7 @@ def _find_by_name(
     matches = [c for c in client.list_discovery_configs() if c.name == name]
     if config_type is not None:
         matches = [c for c in matches if c.config_type is config_type]
-    return in_project(matches, resolve_optional_project(client, project))
+    return filter_by_project(matches, resolve_optional_project(client, project))
 
 
 def _require_single_matched_config_or_abort(
@@ -59,7 +59,7 @@ def _require_single_matched_config_or_abort(
     if not matched_configs:
         abort(f"Discovery config '{name}' not found.", code=ErrorCode.NOT_FOUND)
     if len(matched_configs) > 1:
-        names = project_names(client)
+        names = get_project_names_by_reference(client)
         options = "\n  ".join(
             f"id={c.id} type={c.config_type.value} project={project_label(names, c.project)}" for c in matched_configs
         )
@@ -82,8 +82,8 @@ def list_configs(
 ) -> None:
     """List all discovery configs, or those in one project."""
     client = get_client(profile)
-    configs = in_project(client.list_discovery_configs(), resolve_optional_project(client, project))
-    names = project_names(client)
+    configs = filter_by_project(client.list_discovery_configs(), resolve_optional_project(client, project))
+    names = get_project_names_by_reference(client)
 
     if config_type is not None:
         configs = [c for c in configs if c.config_type is config_type]
@@ -128,7 +128,7 @@ def get_config(
 
     data: dict[str, object] = {
         "id": full.id,
-        "project": project_label(project_names(client), full.project),
+        "project": project_label(get_project_names_by_reference(client), full.project),
         "name": full.name,
         "type": full.config_type.value,
         "valid": full.is_valid.value if full.is_valid else "unknown",
@@ -196,7 +196,7 @@ def create_config(
             hint="Pass --type database|file to create a new one.",
         )
     else:
-        names = project_names(client)
+        names = get_project_names_by_reference(client)
         options = ", ".join(f"{c.config_type.value} in {project_label(names, c.project)}" for c in existing)
         abort(
             f"Multiple discovery configs named '{name}' ({options}).",
@@ -308,7 +308,7 @@ def show_config_status(
 
     status = match.is_valid.value if match.is_valid else "unknown"
     data: dict[str, object] = {
-        "project": project_label(project_names(client), match.project),
+        "project": project_label(get_project_names_by_reference(client), match.project),
         "name": match.name,
         "type": match.config_type.value,
         "status": status,

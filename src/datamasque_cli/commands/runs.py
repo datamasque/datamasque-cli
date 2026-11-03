@@ -28,9 +28,9 @@ from datamasque_cli.output import (
 )
 from datamasque_cli.projects import (
     PROJECT_OPTION_HELP,
-    in_project,
+    filter_by_project,
+    get_project_names_by_reference,
     project_label,
-    project_names,
     resolve_optional_project,
 )
 
@@ -111,7 +111,9 @@ def _resolve_ruleset_id(
     `project` narrows it to the project `--project` names.
     """
     rulesets = client.list_rulesets()
-    by_name = in_project([r for r in rulesets if r.name == name_or_id], resolve_optional_project(client, project))
+    by_name = filter_by_project(
+        [r for r in rulesets if r.name == name_or_id], resolve_optional_project(client, project)
+    )
 
     if mask_type is not None:
         by_name_and_type = [r for r in by_name if r.ruleset_type.value == mask_type]
@@ -128,7 +130,7 @@ def _resolve_ruleset_id(
     if len(by_name) == 1:
         return str(by_name[0].id)
     if len(by_name) > 1:
-        names = project_names(client)
+        names = get_project_names_by_reference(client)
         options = ", ".join(f"{r.ruleset_type.value}:{project_label(names, r.project)}:{r.id}" for r in by_name)
         abort(
             f"Multiple rulesets named '{name_or_id}' ({options}).",
@@ -259,7 +261,9 @@ def run_status(
     # as literal "[status.finished]finished[/status.finished]" in the dump.
     is_styled = not should_emit_json(is_json)
     render_output(
-        _format_run_info(run, project_names(client), is_styled=is_styled), is_json=is_json, title=f"Run {run_id}"
+        _format_run_info(run, get_project_names_by_reference(client), is_styled=is_styled),
+        is_json=is_json,
+        title=f"Run {run_id}",
     )
 
 
@@ -303,7 +307,7 @@ def list_runs(
     else:
         runs = body
     is_styled = not should_emit_json(is_json)
-    names = project_names(client)
+    names = get_project_names_by_reference(client)
     data = [_format_run_dict(r, names, is_styled=is_styled) for r in runs]
 
     render_output(
@@ -505,7 +509,7 @@ def _wait_for_run(
     duration = _format_duration(int(elapsed))
 
     if should_emit_json(is_json):
-        print_json(_format_run_info(run, project_names(client)))
+        print_json(_format_run_info(run, get_project_names_by_reference(client)))
 
     status = run.status
     summary_parts = [f"Run {run_id} {status.value} in {duration}"]

@@ -42,7 +42,7 @@ def _api_error(status: HTTPStatus, detail: str) -> DataMasqueApiError:
     return DataMasqueApiError(detail, response=response)
 
 
-def with_deleted_projects(client: MagicMock, *deleted: Project) -> None:
+def _with_deleted_projects(client: MagicMock, *deleted: Project) -> None:
     """Make `list_projects` return `Default` and `Finance`, and the `deleted` projects first when they are included."""
     client.list_projects.side_effect = lambda include_archived=False: (
         [*deleted, DEFAULT, FINANCE] if include_archived else [DEFAULT, FINANCE]
@@ -65,7 +65,7 @@ def test_list_shows_the_active_projects(client: MagicMock, runner: CliRunner) ->
 
 
 def test_list_include_deleted_marks_the_deleted_projects(client: MagicMock, runner: CliRunner) -> None:
-    with_deleted_projects(client, OLD)
+    _with_deleted_projects(client, OLD)
 
     result = runner.invoke(app, ["projects", "list", "--include-deleted", "--json"])
 
@@ -87,7 +87,7 @@ def test_get_finds_a_project_by_name_in_any_case_or_by_id(client: MagicMock, run
 
 
 def test_get_finds_a_deleted_project_by_id(client: MagicMock, runner: CliRunner) -> None:
-    with_deleted_projects(client, OLD)
+    _with_deleted_projects(client, OLD)
 
     result = runner.invoke(app, ["projects", "get", "3", "--json"])
 
@@ -99,7 +99,7 @@ def test_get_finds_a_deleted_project_by_id(client: MagicMock, runner: CliRunner)
 def test_get_by_name_finds_the_active_project_not_a_deleted_one_of_that_name(
     client: MagicMock, runner: CliRunner
 ) -> None:
-    with_deleted_projects(client, make_project(4, "Finance"))
+    _with_deleted_projects(client, make_project(4, "Finance"))
 
     result = runner.invoke(app, ["projects", "get", "finance", "--json"])
 
@@ -109,7 +109,7 @@ def test_get_by_name_finds_the_active_project_not_a_deleted_one_of_that_name(
 
 
 def test_get_of_an_unknown_id_is_not_found(client: MagicMock, runner: CliRunner) -> None:
-    with_deleted_projects(client, OLD)
+    _with_deleted_projects(client, OLD)
 
     result = runner.invoke(app, ["projects", "get", "99"])
 

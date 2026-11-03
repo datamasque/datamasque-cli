@@ -11,9 +11,9 @@ from datamasque_cli.client import get_client
 from datamasque_cli.errors import confirm_or_abort
 from datamasque_cli.output import print_success, render_output
 from datamasque_cli.projects import (
-    in_project,
+    filter_by_project,
+    get_project_names_by_reference,
     project_label,
-    project_names,
     require_single_or_abort,
     resolve_optional_project,
     resolve_target_project,
@@ -32,7 +32,7 @@ def list_seeds(
     client = get_client(profile)
     target = resolve_optional_project(client, project)
     seeds = client.list_files_of_type(SeedFile, project=target.id if target else None)
-    names = project_names(client)
+    names = get_project_names_by_reference(client)
 
     data = [{"id": s.id, "project": project_label(names, s.project), "name": s.name} for s in seeds]
     render_output(data, is_json=is_json, columns=["id", "project", "name"], title="Seed Files")
@@ -66,7 +66,7 @@ def delete_seed(
     client = get_client(profile)
     named = [seed for seed in client.list_files_of_type(SeedFile) if seed.name == filename]
     match = require_single_or_abort(
-        client, in_project(named, resolve_optional_project(client, project)), f"Seed file '{filename}'"
+        client, filter_by_project(named, resolve_optional_project(client, project)), f"Seed file '{filename}'"
     )
 
     if not is_confirmed:

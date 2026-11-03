@@ -8,9 +8,9 @@ from datamasque.client.models.project import Project
 
 from datamasque_cli.errors import ExitCode
 from datamasque_cli.projects import (
-    in_project,
+    filter_by_project,
+    get_project_names_by_reference,
     project_label,
-    project_names,
     require_single_or_abort,
     resolve_create_project,
     resolve_project,
@@ -56,10 +56,10 @@ def test_resolve_target_project_needs_a_project_once_there_are_two() -> None:
     assert raised.value.code == ExitCode.AMBIGUOUS
 
 
-def test_project_names_include_archived_projects() -> None:
+def test_get_project_names_by_reference_includes_archived_projects() -> None:
     client = _client(DEFAULT, FINANCE)
 
-    assert project_names(client) == {"1-default": "Default", "2-finance": "Finance"}
+    assert get_project_names_by_reference(client) == {"1-default": "Default", "2-finance": "Finance"}
     client.list_projects.assert_called_once_with(include_archived=True)
 
 
@@ -70,11 +70,11 @@ def test_project_label_names_the_project_and_leaves_a_built_in_blank() -> None:
     assert project_label(names, None) == ""
 
 
-def test_in_project_keeps_only_that_projects_items() -> None:
+def test_filter_by_project_keeps_only_that_projects_items() -> None:
     items = [SimpleNamespace(project="1-default"), SimpleNamespace(project="2-finance")]
 
-    assert in_project(items, FINANCE) == [items[1]]
-    assert in_project(items, None) == items
+    assert filter_by_project(items, FINANCE) == [items[1]]
+    assert filter_by_project(items, None) == items
 
 
 def test_require_single_returns_the_only_match() -> None:

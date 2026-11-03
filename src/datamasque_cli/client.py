@@ -16,7 +16,7 @@ from datamasque.client.models.ifm import DataMasqueIfmInstanceConfig
 
 from datamasque_cli.config import Config, Profile, load_config
 from datamasque_cli.errors import ErrorCode, abort
-from datamasque_cli.projects import in_project, require_single_or_abort, resolve_optional_project
+from datamasque_cli.projects import filter_by_project, require_single_or_abort, resolve_optional_project
 
 ENV_URL = "DATAMASQUE_URL"
 ENV_USERNAME = "DATAMASQUE_USERNAME"
@@ -223,7 +223,9 @@ def resolve_connection(client: DataMasqueClient, name_or_id: str, project: str |
     Aborts when nothing matches, or when the name matches connections in more than one project.
     """
     connections = client.list_connections()
-    by_name = in_project([c for c in connections if c.name == name_or_id], resolve_optional_project(client, project))
+    by_name = filter_by_project(
+        [c for c in connections if c.name == name_or_id], resolve_optional_project(client, project)
+    )
     if not by_name:
         by_id = next((c for c in connections if str(c.id) == name_or_id), None)
         if by_id is not None:

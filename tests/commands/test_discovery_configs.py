@@ -177,7 +177,7 @@ def test_create_of_a_new_type_ignores_the_other_types_project(
     )
 
     assert result.exit_code == ExitCode.AMBIGUOUS
-    assert "The instance has 2 active projects." in result.output
+    assert result.stderr == "Error: The instance has 2 active projects.\nHint: Pass --project to choose one.\n"
     client.create_or_update_discovery_config.assert_not_called()
 
 

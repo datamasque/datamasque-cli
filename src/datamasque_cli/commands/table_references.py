@@ -17,9 +17,9 @@ from datamasque_cli.fileio import read_model_or_abort
 from datamasque_cli.output import print_success, render_output
 from datamasque_cli.projects import (
     PROJECT_OPTION_HELP,
-    in_project,
+    filter_by_project,
+    get_project_names_by_reference,
     project_label,
-    project_names,
     require_single_or_abort,
     resolve_create_project,
     resolve_optional_project,
@@ -69,7 +69,7 @@ def _get_or_abort(client: DataMasqueClient, name: str, project: str | None) -> T
     """Return the table reference named `name`, in `project` or in the one project that has it, else abort."""
     named = [ref for ref in _list_or_abort(client) if ref.name == name]
     return require_single_or_abort(
-        client, in_project(named, resolve_optional_project(client, project)), f"Table reference '{name}'"
+        client, filter_by_project(named, resolve_optional_project(client, project)), f"Table reference '{name}'"
     )
 
 
@@ -81,8 +81,8 @@ def list_references(
 ) -> None:
     """List all table references, or those in one project."""
     client = get_client(profile)
-    references = in_project(_list_or_abort(client), resolve_optional_project(client, project))
-    names = project_names(client)
+    references = filter_by_project(_list_or_abort(client), resolve_optional_project(client, project))
+    names = get_project_names_by_reference(client)
 
     data = [
         {
@@ -116,7 +116,7 @@ def get_reference(
     options = reference.options
     data: dict[str, object] = {
         "id": reference.id,
-        "project": project_label(project_names(client), reference.project),
+        "project": project_label(get_project_names_by_reference(client), reference.project),
         "name": reference.name,
         "connection": reference.connection_id,
         "source": reference.source,

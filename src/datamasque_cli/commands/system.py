@@ -78,7 +78,7 @@ def export_config(
 ) -> None:
     """Deprecated alias for `dm rulesets export-bundle`."""
     print_warning("`dm system export` is deprecated; use `dm rulesets export-bundle` instead.")
-    export_bundle(output_path=output_path, profile=profile)
+    export_bundle(output_path=output_path, is_including_seed_files=False, profile=profile)
 
 
 @app.command("import", hidden=True, deprecated=True)

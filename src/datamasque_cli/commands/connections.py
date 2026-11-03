@@ -28,9 +28,9 @@ from datamasque_cli.fileio import read_json_object_or_abort
 from datamasque_cli.output import print_success, redact_sensitive_fields, render_output
 from datamasque_cli.projects import (
     PROJECT_OPTION_HELP,
-    in_project,
+    filter_by_project,
+    get_project_names_by_reference,
     project_label,
-    project_names,
     resolve_create_project,
     resolve_optional_project,
 )
@@ -106,8 +106,8 @@ def list_connections(
 ) -> None:
     """List all configured connections, or those in one project."""
     client = get_client(profile)
-    connections = in_project(client.list_connections(), resolve_optional_project(client, project))
-    names = project_names(client)
+    connections = filter_by_project(client.list_connections(), resolve_optional_project(client, project))
+    names = get_project_names_by_reference(client)
 
     data = []
     for conn in connections:
@@ -143,7 +143,7 @@ def get_connection(
     match = resolve_connection(client, name, project)
 
     data = redact_sensitive_fields(match.model_dump())
-    data["project"] = project_label(project_names(client), match.project)
+    data["project"] = project_label(get_project_names_by_reference(client), match.project)
     render_output(data, is_json=is_json, title=f"Connection: {name}")
 
 
