@@ -83,6 +83,26 @@ def test_move_names_select_exact_names_only(client: MagicMock, runner: CliRunner
     client.move_resources.assert_called_once_with({ResourceTypeName.rulesets: [CUSTOMERS]}, DEFAULT)
 
 
+def test_move_with_a_name_that_matches_nothing_moves_nothing_and_is_not_found(
+    client: MagicMock, runner: CliRunner
+) -> None:
+    result = runner.invoke(app, ["resources", "move", "customers", "typo", "other", "--to", "default", "-y"])
+
+    assert result.exit_code == ExitCode.NOT_FOUND
+    assert result.stderr == (
+        "Error: No resources named 'typo', 'other'.\n"
+        "Hint: Check the names, and that --project, --type and --search select them.\n"
+    )
+    client.move_resources.assert_not_called()
+
+
+def test_move_name_of_a_resource_that_cannot_move_is_not_reported_missing(client: MagicMock, runner: CliRunner) -> None:
+    result = runner.invoke(app, ["resources", "move", "first_names.csv", "--to", "default", "-y"])
+
+    assert result.exit_code == ExitCode.NOT_FOUND
+    assert result.stderr == "Error: No resources to move to 'Default'.\n"
+
+
 def test_move_without_any_selection_is_rejected_without_a_request(client: MagicMock, runner: CliRunner) -> None:
     result = runner.invoke(app, ["resources", "move", "--to", "default", "-y"])
 

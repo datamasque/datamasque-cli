@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from datamasque.client.exceptions import DataMasqueApiError
+from datamasque.client.models.bundle import BundleImportResult
 from datamasque.client.models.ruleset import RulesetType
 from datamasque.client.models.status import ValidationErrorDetails, ValidationStatus
 from typer.testing import CliRunner
@@ -164,7 +165,7 @@ def test_create_of_a_new_type_ignores_the_other_types_project(
     )
 
     assert result.exit_code == ExitCode.AMBIGUOUS
-    assert "The instance has 2 active projects." in result.output
+    assert result.stderr == "Error: The instance has 2 active projects.\nHint: Pass --project to choose one.\n"
     client.create_or_update_ruleset.assert_not_called()
 
 
@@ -412,20 +413,35 @@ def test_validate_nonterminal_status_reports_valid(
 # -- export-bundle / import-bundle ----------------------------------------
 
 
+def _make_bundle_import_result(*, fallback_project: str | None = None) -> BundleImportResult:
+    """Return an import result for a bundle with no items, whose items under no project went into `fallback_project`."""
+    return BundleImportResult.model_validate(
+        {
+            "rulesets": {"metadata": {"processed": 0, "created": 0, "restored": 0, "error": 0}, "data": []},
+            "fallback_project": fallback_project,
+        }
+    )
+
+
+@pytest.mark.parametrize(("seed_flags", "is_including_seed_files"), [([], False), (["--include-seed-files"], True)])
 @patch(f"{MODULE}.get_client")
-def test_export_bundle_writes_binary_zip(mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path) -> None:
+def test_export_bundle_writes_the_zip_with_seed_files_only_on_request(
+    mock_get_client: MagicMock,
+    runner: CliRunner,
+    tmp_path: Path,
+    seed_flags: list[str],
+    is_including_seed_files: bool,
+) -> None:
     client = with_projects(MagicMock())
     mock_get_client.return_value = client
-    mock_response = MagicMock()
-    mock_response.content = b"PK\x03\x04fake-zip-bytes"
-    client.make_request.return_value = mock_response
+    client.export_bundle.return_value = b"PK\x03\x04fake-zip-bytes"
 
     output = tmp_path / "bundle.zip"
-    result = runner.invoke(app, ["rulesets", "export-bundle", "--output", str(output)])
+    result = runner.invoke(app, ["rulesets", "export-bundle", "--output", str(output), *seed_flags])
 
     assert result.exit_code == 0
     assert output.read_bytes() == b"PK\x03\x04fake-zip-bytes"
-    client.make_request.assert_called_once_with("GET", "/api/export/v2/")
+    client.export_bundle.assert_called_once_with(include_seed_files=is_including_seed_files)
 
 
 @patch(f"{MODULE}.get_client")
@@ -439,55 +455,40 @@ def test_import_bundle_requires_confirmation(mock_get_client: MagicMock, runner:
     result = runner.invoke(app, ["rulesets", "import-bundle", "--file", str(bundle)], input="n\n")
 
     assert result.exit_code == ExitCode.CANCELLED
-    client.make_request.assert_not_called()
+    client.import_bundle.assert_not_called()
 
 
 @patch(f"{MODULE}.get_client")
-def test_import_bundle_uploads_zip_archive_as_multipart(
+def test_import_bundle_passes_the_file_and_overwrite_options(
     mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path
 ) -> None:
     client = with_projects(MagicMock())
     mock_get_client.return_value = client
-    mock_response = MagicMock()
-    mock_response.content = b""
-    client.make_request.return_value = mock_response
+    client.import_bundle.return_value = _make_bundle_import_result()
 
     bundle = tmp_path / "my-bundle.zip"
     bundle.write_bytes(b"PK\x03\x04zip-bytes")
 
-    result = runner.invoke(
-        app,
-        [
-            "rulesets",
-            "import-bundle",
-            "--file",
-            str(bundle),
-            "--overwrite-rulesets",
-            "--yes",
-        ],
-    )
+    result = runner.invoke(app, ["rulesets", "import-bundle", "--file", str(bundle), "--overwrite-rulesets", "--yes"])
 
     assert result.exit_code == 0
-    (call,) = client.make_request.call_args_list
-    assert call.args == ("POST", "/api/import/v2/")
-    assert call.kwargs["data"] == {
-        "overwrite_rulesets": "true",
-        "overwrite_libraries": "false",
-        "overwrite_seed_files": "false",
-    }
-    (upload,) = call.kwargs["files"]
-    assert upload.field_name == "zip_archive"
-    assert upload.filename == "my-bundle.zip"
-    assert upload.content_type == "application/zip"
+    client.import_bundle.assert_called_once_with(
+        bundle,
+        overwrite_rulesets=True,
+        overwrite_libraries=False,
+        overwrite_seed_files=False,
+        fallback_project=None,
+    )
 
 
 @patch(f"{MODULE}.get_client")
-def test_import_bundle_sends_the_fallback_project_id(
+def test_import_bundle_sends_the_fallback_project(
     mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path
 ) -> None:
-    client = with_projects(MagicMock(), make_project(), make_project(project_id=7, name="Bank"))
+    bank = make_project(project_id=7, name="Bank")
+    client = with_projects(MagicMock(), make_project(), bank)
     mock_get_client.return_value = client
-    client.make_request.return_value = MagicMock(content=b"", headers={})
+    client.import_bundle.return_value = _make_bundle_import_result()
 
     bundle = tmp_path / "bundle.zip"
     bundle.write_bytes(b"PK\x03\x04")
@@ -497,8 +498,7 @@ def test_import_bundle_sends_the_fallback_project_id(
     )
 
     assert result.exit_code == 0
-    (call,) = client.make_request.call_args_list
-    assert call.kwargs["data"]["fallback_project"] == "7"
+    assert client.import_bundle.call_args.kwargs["fallback_project"] == bank
 
 
 @patch(f"{MODULE}.get_client")
@@ -516,16 +516,16 @@ def test_import_bundle_rejects_an_unknown_fallback_project(
     )
 
     assert result.exit_code == ExitCode.NOT_FOUND
-    client.make_request.assert_not_called()
+    client.import_bundle.assert_not_called()
 
 
 @patch(f"{MODULE}.get_client")
-def test_import_bundle_warns_about_an_older_bundle(
+def test_import_bundle_names_the_project_that_took_items_under_no_project(
     mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path
 ) -> None:
     client = with_projects(MagicMock())
     mock_get_client.return_value = client
-    client.make_request.return_value = MagicMock(content=b"", headers={"Deprecation": "true"})
+    client.import_bundle.return_value = _make_bundle_import_result(fallback_project="Bank")
 
     bundle = tmp_path / "bundle.zip"
     bundle.write_bytes(b"PK\x03\x04")
@@ -533,18 +533,16 @@ def test_import_bundle_warns_about_an_older_bundle(
     result = runner.invoke(app, ["rulesets", "import-bundle", "--file", str(bundle), "--yes"])
 
     assert result.exit_code == 0
-    assert "older format" in result.output
-    (call,) = client.make_request.call_args_list
-    assert "fallback_project" not in call.kwargs["data"]
+    assert " ".join(result.stderr.split()) == (
+        "Bundle imported successfully. Items the bundle files under no project went into project 'Bank'."
+    )
 
 
 @patch(f"{MODULE}.get_client")
 def test_system_export_alias_warns_and_delegates(mock_get_client: MagicMock, runner: CliRunner, tmp_path: Path) -> None:
     client = with_projects(MagicMock())
     mock_get_client.return_value = client
-    mock_response = MagicMock()
-    mock_response.content = b"zip-body"
-    client.make_request.return_value = mock_response
+    client.export_bundle.return_value = b"zip-body"
 
     output = tmp_path / "export.zip"
     result = runner.invoke(app, ["system", "export", "--output", str(output)])

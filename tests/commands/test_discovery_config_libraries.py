@@ -63,9 +63,9 @@ def test_list_shows_project_and_usage(mock_get_client: MagicMock, runner: CliRun
     result = runner.invoke(app, ["discover", "libraries", "list", "--json"])
 
     assert result.exit_code == 0
-    assert '"finance"' in result.stdout
-    assert '"project": "Org"' in result.stdout
-    assert '"used_by": 3' in result.stdout
+    assert json.loads(result.stdout) == [
+        {"id": "lib-uuid", "project": "Org", "name": "finance", "valid": "valid", "used_by": 3}
+    ]
 
 
 @patch(f"{MODULE}.get_client")
@@ -81,8 +81,9 @@ def test_list_project_keeps_only_that_projects_libraries(mock_get_client: MagicM
     result = runner.invoke(app, ["discover", "libraries", "list", "--project", "org", "--json"])
 
     assert result.exit_code == 0
-    assert '"payroll"' in result.stdout
-    assert '"finance"' not in result.stdout
+    assert json.loads(result.stdout) == [
+        {"id": "org-lib", "project": "Org", "name": "payroll", "valid": "valid", "used_by": 0}
+    ]
 
 
 @patch(f"{MODULE}.get_client")
@@ -144,7 +145,7 @@ def test_get_unknown_project_is_not_found(mock_get_client: MagicMock, runner: Cl
     result = runner.invoke(app, ["discover", "libraries", "get", "finance", "--project", "nope"])
 
     assert result.exit_code == ExitCode.NOT_FOUND
-    assert "Project 'nope' not found" in result.stderr
+    assert result.stderr == "Error: Project 'nope' not found.\n"
 
 
 @patch(f"{MODULE}.get_client")

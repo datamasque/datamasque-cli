@@ -12,9 +12,9 @@ from datamasque_cli.errors import confirm_or_abort
 from datamasque_cli.output import print_success, render_output
 from datamasque_cli.projects import (
     PROJECT_OPTION_HELP,
-    in_project,
+    filter_by_project,
+    get_project_names_by_reference,
     project_label,
-    project_names,
     require_single_or_abort,
     resolve_optional_project,
     resolve_target_project,
@@ -48,7 +48,7 @@ def list_files(
     client = get_client(profile)
     target = resolve_optional_project(client, project)
     files = client.list_files_of_type(klass, project=target.id if target else None)
-    names = project_names(client)
+    names = get_project_names_by_reference(client)
 
     data = [{"id": f.id, "project": project_label(names, f.project), "name": f.name} for f in files]
     render_output(data, is_json=is_json, columns=["id", "project", "name"], title=f"Files ({file_type})")
@@ -70,7 +70,7 @@ def delete_file(
 
     named = [f for f in client.list_files_of_type(klass) if f.name == name]
     match = require_single_or_abort(
-        client, in_project(named, resolve_optional_project(client, project)), f"File '{name}' ({file_type})"
+        client, filter_by_project(named, resolve_optional_project(client, project)), f"File '{name}' ({file_type})"
     )
 
     if not is_confirmed:

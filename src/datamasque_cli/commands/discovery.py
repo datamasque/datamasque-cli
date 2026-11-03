@@ -34,7 +34,7 @@ from datamasque_cli.errors import (
 )
 from datamasque_cli.fileio import write_bytes_or_abort, write_text_or_abort
 from datamasque_cli.output import print_info, print_json, print_success, render_output, should_emit_json
-from datamasque_cli.projects import in_project, require_single_or_abort, resolve_optional_project
+from datamasque_cli.projects import filter_by_project, require_single_or_abort, resolve_optional_project
 
 app = typer.Typer(help="Data discovery operations.", no_args_is_help=True)
 app.add_typer(discovery_configs.app, name="configs")
@@ -87,7 +87,7 @@ def _resolve_discovery_config_id(
 
     Config names are unique per type within a project, so name, type and project identify at most one config.
     """
-    named = in_project(
+    named = filter_by_project(
         [c for c in client.list_discovery_configs() if c.name == name], resolve_optional_project(client, project)
     )
     of_type = [c for c in named if c.config_type is expected_type]

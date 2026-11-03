@@ -42,8 +42,16 @@ def _get_resources_to_move(
     Return the resources the filters select, by type, leaving out those already in the destination.
 
     Built-in seeds belong to no project and cannot move, so they are left out too.
+    Aborts with not-found when a name matches none of the resources the other filters select.
     """
     listed = client.list_resources(projects=sources, types=type_names, search=search)
+    listed_names = {resource.name for resources in listed.values() for resource in resources}
+    if unmatched_names := [name for name in dict.fromkeys(names) if name not in listed_names]:
+        abort(
+            f"No resources named {', '.join(repr(name) for name in unmatched_names)}.",
+            code=ErrorCode.NOT_FOUND,
+            hint="Check the names, and that --project, --type and --search select them.",
+        )
     selected = {
         type_name: [
             resource

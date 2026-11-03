@@ -17,9 +17,9 @@ from datamasque_cli.fileio import read_text_or_abort
 from datamasque_cli.output import print_success, print_warning, render_output
 from datamasque_cli.projects import (
     PROJECT_OPTION_HELP,
-    in_project,
+    filter_by_project,
+    get_project_names_by_reference,
     project_label,
-    project_names,
     require_single_or_abort,
     resolve_create_project,
     resolve_optional_project,
@@ -32,7 +32,7 @@ app = typer.Typer(help="Manage discovery config libraries (configurable discover
 def _find_library(client: DataMasqueClient, name: str, project: str | None) -> DiscoveryConfigLibrary:
     """Return the library named `name`, with its YAML, in `project` or in the one project that has it."""
     matches = [lib for lib in client.list_discovery_config_libraries() if lib.name == name]
-    matches = in_project(matches, resolve_optional_project(client, project))
+    matches = filter_by_project(matches, resolve_optional_project(client, project))
     found = require_single_or_abort(client, matches, f"Discovery config library '{name}'")
     return client.get_discovery_config_library(found.id)
 
@@ -45,8 +45,8 @@ def list_libraries(
 ) -> None:
     """List all discovery config libraries, or those in one project."""
     client = get_client(profile)
-    libraries = in_project(client.list_discovery_config_libraries(), resolve_optional_project(client, project))
-    names = project_names(client)
+    libraries = filter_by_project(client.list_discovery_config_libraries(), resolve_optional_project(client, project))
+    names = get_project_names_by_reference(client)
 
     data = [
         {
@@ -85,7 +85,7 @@ def get_library(
 
     data: dict[str, object] = {
         "id": lib.id,
-        "project": project_label(project_names(client), lib.project),
+        "project": project_label(get_project_names_by_reference(client), lib.project),
         "name": lib.name,
         "valid": lib.is_valid.value if lib.is_valid else "unknown",
         "used_by": lib.usage_count,
@@ -199,7 +199,7 @@ def show_library_status(
 
     status = lib.is_valid.value if lib.is_valid else "unknown"
     data: dict[str, object] = {
-        "project": project_label(project_names(client), lib.project),
+        "project": project_label(get_project_names_by_reference(client), lib.project),
         "name": lib.name,
         "status": status,
         "validation_error": lib.validation_error,

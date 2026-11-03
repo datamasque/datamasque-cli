@@ -7,7 +7,6 @@ from pathlib import Path
 
 import typer
 from datamasque.client import DataMasqueClient
-from datamasque.client.base import UploadFile
 from datamasque.client.exceptions import DataMasqueApiError
 from datamasque.client.models.discovery import FileRulesetGenerationRequest, RulesetGenerationRequest
 from datamasque.client.models.ruleset import Ruleset, RulesetType
@@ -33,9 +32,9 @@ from datamasque_cli.fileio import (
 from datamasque_cli.output import print_info, print_success, print_warning, render_output, should_emit_json
 from datamasque_cli.projects import (
     PROJECT_OPTION_HELP,
-    in_project,
+    filter_by_project,
+    get_project_names_by_reference,
     project_label,
-    project_names,
     resolve_create_project,
     resolve_optional_project,
     resolve_project,
@@ -55,7 +54,7 @@ def _find_by_name(
     matches = [rs for rs in client.list_rulesets() if rs.name == name]
     if mask_type is not None:
         matches = [rs for rs in matches if rs.ruleset_type == mask_type]
-    return in_project(matches, resolve_optional_project(client, project))
+    return filter_by_project(matches, resolve_optional_project(client, project))
 
 
 def _require_single_matched_ruleset_or_abort(
@@ -65,7 +64,7 @@ def _require_single_matched_ruleset_or_abort(
     if not matched_rulesets:
         abort(f"Ruleset '{name}' not found.", code=ErrorCode.NOT_FOUND)
     if len(matched_rulesets) > 1:
-        names = project_names(client)
+        names = get_project_names_by_reference(client)
         options = "\n  ".join(
             f"id={rs.id} type={rs.ruleset_type.value} project={project_label(names, rs.project)}"
             for rs in matched_rulesets
@@ -87,12 +86,12 @@ def list_rulesets(
 ) -> None:
     """List all rulesets, or those in one project."""
     client = get_client(profile)
-    rulesets = in_project(client.list_rulesets(), resolve_optional_project(client, project))
+    rulesets = filter_by_project(client.list_rulesets(), resolve_optional_project(client, project))
 
     if ruleset_type is not None:
         rulesets = [rs for rs in rulesets if rs.ruleset_type == ruleset_type]
 
-    names = project_names(client)
+    names = get_project_names_by_reference(client)
     data = [
         {
             "id": rs.id,
@@ -134,7 +133,7 @@ def get_ruleset(
 
     data: dict[str, object] = {
         "id": full.id,
-        "project": project_label(project_names(client), full.project),
+        "project": project_label(get_project_names_by_reference(client), full.project),
         "name": full.name,
         "type": full.ruleset_type.value,
         "yaml": full.yaml,
@@ -179,7 +178,7 @@ def create_ruleset(
             hint="Pass --type database|file to create a new one.",
         )
     else:
-        names = project_names(client)
+        names = get_project_names_by_reference(client)
         options = ", ".join(f"{r.ruleset_type.value} in {project_label(names, r.project)}" for r in existing)
         abort(
             f"Multiple rulesets named '{name}' ({options}).",
@@ -279,17 +278,24 @@ def validate_ruleset(
 @app.command("export-bundle")
 def export_bundle(
     output_path: Path = typer.Option("datamasque-bundle.zip", "--output", "-o", help="Where to save the ZIP bundle"),
+    is_including_seed_files: bool = typer.Option(
+        False, "--include-seed-files", help="Also bundle the custom seed files the rulesets and libraries use"
+    ),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
-    """Export rulesets, ruleset libraries, and any referenced seed files as a ZIP bundle.
+    """
+    Export every ruleset and ruleset library as a ZIP bundle, with their seed files on request.
 
-    Bundles only rulesets + libraries + optional seed files — not connections,
-    users, licences, or instance settings. Each item is filed under its project.
+    Bundles only rulesets, libraries and, with `--include-seed-files`, the custom seed files they use,
+    not connections, users, licences or instance settings.
+    Each item is filed under its project.
     """
     client = get_client(profile)
-    # `export_configuration` is not yet wrapped in datamasque-python; hit the endpoint directly.
-    response = client.make_request("GET", "/api/export/v2/")
-    write_bytes_or_abort(output_path, response.content)
+    try:
+        bundle = client.export_bundle(include_seed_files=is_including_seed_files)
+    except DataMasqueApiError as exc:
+        abort_api_error("Failed to export the bundle", exc)
+    write_bytes_or_abort(output_path, bundle)
     print_success(f"Bundle exported to {output_path}")
 
 
@@ -314,56 +320,38 @@ def import_bundle(
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
     is_confirmed: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ) -> None:
-    """Import rulesets, ruleset libraries, and seed files from a ZIP bundle.
+    """
+    Import rulesets, ruleset libraries, and seed files from a ZIP bundle.
 
-    Bundle must have been produced by `dm rulesets export-bundle` or the
-    server's export endpoint. Each item goes into the project the bundle files it
-    under; items under no project, such as those in an older bundle, go into
-    `--fallback-project`. By default, duplicates are skipped; pass `--overwrite-*`
-    flags to replace existing entries.
+    Bundle must have been produced by `dm rulesets export-bundle` or the server's export endpoint.
+    Each item goes into the project the bundle files it under;
+    items under no project, such as those in an older bundle, go into `--fallback-project`.
+    By default, duplicates are skipped; pass `--overwrite-*` flags to replace existing entries.
     """
     if not is_confirmed:
         confirm_or_abort("This will modify rulesets, libraries, and seed files. Continue?")
 
     client = get_client(profile)
-    data = {
-        "overwrite_rulesets": str(overwrite_rulesets).lower(),
-        "overwrite_libraries": str(overwrite_libraries).lower(),
-        "overwrite_seed_files": str(overwrite_seeds).lower(),
-    }
-    if fallback_project is not None:
-        data["fallback_project"] = str(resolve_project(client, fallback_project).id)
-
-    # `/api/import/v2/` expects a multipart `zip_archive` upload plus the overwrite
-    # flags and an optional `fallback_project`; `import_configuration` is not yet
-    # wrapped in datamasque-python, so we call `make_request` directly.
-    with file.open("rb") as zip_content:
-        response = client.make_request(
-            "POST",
-            "/api/import/v2/",
-            data=data,
-            files=[
-                UploadFile(
-                    field_name="zip_archive",
-                    filename=file.name,
-                    content=zip_content,
-                    content_type="application/zip",
-                ),
-            ],
+    fallback = resolve_project(client, fallback_project) if fallback_project is not None else None
+    try:
+        result = client.import_bundle(
+            file,
+            overwrite_rulesets=overwrite_rulesets,
+            overwrite_libraries=overwrite_libraries,
+            overwrite_seed_files=overwrite_seeds,
+            fallback_project=fallback,
         )
+    except DataMasqueApiError as exc:
+        abort_api_error("Failed to import the bundle", exc)
 
     print_success("Bundle imported successfully.")
-    if response.headers.get("Deprecation") == "true":
-        print_warning(
-            "This bundle is in the older format. Items it files under no project went into the fallback project."
-        )
-    if response.content:
-        try:
-            summary = response.json()
-        except ValueError:
-            return
-        if isinstance(summary, dict):
-            render_output(summary, is_json=False, title="Import summary")
+    if result.fallback_project is not None:
+        print_info(f"Items the bundle files under no project went into project '{result.fallback_project}'.")
+    render_output(
+        result.model_dump(mode="json", exclude={"is_deprecated_bundle"}, exclude_none=True),
+        is_json=False,
+        title="Import summary",
+    )
 
 
 @app.command("status")
@@ -385,7 +373,7 @@ def show_ruleset_status(
     status = match.is_valid.value if match.is_valid else "unknown"
     errors = match.validation_errors or []
     data: dict[str, object] = {
-        "project": project_label(project_names(client), match.project),
+        "project": project_label(get_project_names_by_reference(client), match.project),
         "name": match.name,
         "type": match.ruleset_type.value,
         "status": status,

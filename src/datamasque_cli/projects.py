@@ -84,7 +84,7 @@ def resolve_create_project(client: DataMasqueClient, name_or_id: str | None, exi
     return target
 
 
-def project_names(client: DataMasqueClient) -> dict[str, str]:
+def get_project_names_by_reference(client: DataMasqueClient) -> dict[str, str]:
     """Map each project's `<id>-<slug>` reference to its name, archived projects included."""
     return {p.reference: p.name for p in client.list_projects(include_archived=True)}
 
@@ -96,7 +96,7 @@ def project_label(names: dict[str, str], reference: str | None) -> str:
     return names.get(reference, reference)
 
 
-def in_project(items: Sequence[ScopedT], project: Project | None) -> list[ScopedT]:
+def filter_by_project(items: Sequence[ScopedT], project: Project | None) -> list[ScopedT]:
     """Keep the items in `project`, or all of them when `project` is `None`."""
     if project is None:
         return list(items)
@@ -120,7 +120,7 @@ def require_single_or_abort(
     if not matches:
         abort(f"{label} not found.", code=ErrorCode.NOT_FOUND)
     if len(matches) > 1:
-        names = project_names(client)
+        names = get_project_names_by_reference(client)
         options = "\n  ".join(
             f"project={project_label(names, item.project)}" + (f" {describe(item)}" if describe else "")
             for item in matches
