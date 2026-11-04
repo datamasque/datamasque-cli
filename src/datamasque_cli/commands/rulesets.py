@@ -34,6 +34,7 @@ from datamasque_cli.projects import (
     PROJECT_OPTION_HELP,
     filter_by_project,
     get_project_names_by_reference,
+    get_same_name_project_help,
     project_label,
     resolve_create_project,
     resolve_optional_project,
@@ -111,9 +112,7 @@ def get_ruleset(
     ruleset_type: RulesetType | None = typer.Option(
         None, "--type", "-t", help="Required when two rulesets share a name"
     ),
-    project: str | None = typer.Option(
-        None, "--project", help="Project name or id; required when rulesets in two projects share a name"
-    ),
+    project: str | None = typer.Option(None, "--project", help=get_same_name_project_help("rulesets")),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
     is_yaml: bool = typer.Option(False, "--yaml", help="Output raw YAML content only"),
     is_json: bool = typer.Option(False, "--json", help="Output as JSON"),
@@ -203,9 +202,7 @@ def delete_ruleset(
     ruleset_type: RulesetType | None = typer.Option(
         None, "--type", "-t", help="Required when two rulesets share a name"
     ),
-    project: str | None = typer.Option(
-        None, "--project", help="Project name or id; required when rulesets in two projects share a name"
-    ),
+    project: str | None = typer.Option(None, "--project", help=get_same_name_project_help("rulesets")),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
     is_confirmed: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ) -> None:
@@ -314,7 +311,7 @@ def import_bundle(
     fallback_project: str | None = typer.Option(
         None,
         "--fallback-project",
-        help="Project name or id for the items the bundle files under no project. "
+        help=f"{PROJECT_OPTION_HELP} for the items the bundle files under no project. "
         "Defaults to the server's default project.",
     ),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
@@ -360,9 +357,7 @@ def show_ruleset_status(
     ruleset_type: RulesetType | None = typer.Option(
         None, "--type", "-t", help="Required when two rulesets share a name"
     ),
-    project: str | None = typer.Option(
-        None, "--project", help="Project name or id; required when rulesets in two projects share a name"
-    ),
+    project: str | None = typer.Option(None, "--project", help=get_same_name_project_help("rulesets")),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
     is_json: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:

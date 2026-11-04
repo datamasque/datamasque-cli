@@ -30,6 +30,7 @@ from datamasque_cli.projects import (
     PROJECT_OPTION_HELP,
     filter_by_project,
     get_project_names_by_reference,
+    get_same_name_project_help,
     project_label,
     resolve_create_project,
     resolve_optional_project,
@@ -108,9 +109,7 @@ def get_config(
     config_type: DiscoveryConfigType | None = typer.Option(
         None, "--type", "-t", help="Required when two configs share a name"
     ),
-    project: str | None = typer.Option(
-        None, "--project", help="Project name or id; required when configs in two projects share a name"
-    ),
+    project: str | None = typer.Option(None, "--project", help=get_same_name_project_help("configs")),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
     is_yaml: bool = typer.Option(False, "--yaml", help="Output raw YAML content only"),
     is_json: bool = typer.Option(False, "--json", help="Output as JSON"),
@@ -222,9 +221,7 @@ def delete_config(
     config_type: DiscoveryConfigType | None = typer.Option(
         None, "--type", "-t", help="Required when two configs share a name"
     ),
-    project: str | None = typer.Option(
-        None, "--project", help="Project name or id; required when configs in two projects share a name"
-    ),
+    project: str | None = typer.Option(None, "--project", help=get_same_name_project_help("configs")),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
     is_confirmed: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ) -> None:
@@ -296,9 +293,7 @@ def show_config_status(
     config_type: DiscoveryConfigType | None = typer.Option(
         None, "--type", "-t", help="Required when two configs share a name"
     ),
-    project: str | None = typer.Option(
-        None, "--project", help="Project name or id; required when configs in two projects share a name"
-    ),
+    project: str | None = typer.Option(None, "--project", help=get_same_name_project_help("configs")),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
     is_json: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:

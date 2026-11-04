@@ -11,8 +11,10 @@ from datamasque_cli.client import get_client
 from datamasque_cli.errors import confirm_or_abort
 from datamasque_cli.output import print_success, render_output
 from datamasque_cli.projects import (
+    PROJECT_OPTION_HELP,
     filter_by_project,
     get_project_names_by_reference,
+    get_same_name_project_help,
     project_label,
     require_single_or_abort,
     resolve_optional_project,
@@ -24,7 +26,7 @@ app = typer.Typer(help="Manage seed files.", no_args_is_help=True)
 
 @app.command("list")
 def list_seeds(
-    project: str | None = typer.Option(None, "--project", help="Project name or id; also lists the built-in seeds"),
+    project: str | None = typer.Option(None, "--project", help=f"{PROJECT_OPTION_HELP}; also lists the built-in seeds"),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
     is_json: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
@@ -56,9 +58,7 @@ def upload_seed(
 @app.command("delete")
 def delete_seed(
     filename: str = typer.Argument(help="Seed filename to delete"),
-    project: str | None = typer.Option(
-        None, "--project", help="Project name or id; required when seeds in two projects share a name"
-    ),
+    project: str | None = typer.Option(None, "--project", help=get_same_name_project_help("seeds")),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
     is_confirmed: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ) -> None:

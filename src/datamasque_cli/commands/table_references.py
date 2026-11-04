@@ -19,6 +19,7 @@ from datamasque_cli.projects import (
     PROJECT_OPTION_HELP,
     filter_by_project,
     get_project_names_by_reference,
+    get_same_name_project_help,
     project_label,
     require_single_or_abort,
     resolve_create_project,
@@ -103,9 +104,7 @@ def list_references(
 @app.command("get")
 def get_reference(
     name: str = typer.Argument(help="Table reference name"),
-    project: str | None = typer.Option(
-        None, "--project", help="Project name or id; required when references in two projects share a name"
-    ),
+    project: str | None = typer.Option(None, "--project", help=get_same_name_project_help("references")),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
     is_json: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
@@ -261,9 +260,7 @@ def update_reference(
     encoding: str | None = typer.Option(None, help=f"New CSV encoding {_CSV_OPTION_HELP}"),
     quotechar: str | None = typer.Option(None, help=f"New CSV quote character {_CSV_OPTION_HELP}"),
     null_string: str | None = typer.Option(None, help=f"New null-string value {_CSV_OPTION_HELP}"),
-    project: str | None = typer.Option(
-        None, "--project", help="Project name or id; required when references in two projects share a name"
-    ),
+    project: str | None = typer.Option(None, "--project", help=get_same_name_project_help("references")),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Update selected fields on an existing table reference, preserving its ID."""
@@ -295,9 +292,7 @@ def update_reference(
 @app.command("delete")
 def delete_reference(
     name: str = typer.Argument(help="Table reference name to delete"),
-    project: str | None = typer.Option(
-        None, "--project", help="Project name or id; required when references in two projects share a name"
-    ),
+    project: str | None = typer.Option(None, "--project", help=get_same_name_project_help("references")),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
     is_confirmed: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ) -> None:
