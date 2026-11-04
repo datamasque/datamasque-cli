@@ -30,6 +30,7 @@ from datamasque_cli.projects import (
     PROJECT_OPTION_HELP,
     filter_by_project,
     get_project_names_by_reference,
+    get_same_name_project_help,
     project_label,
     resolve_create_project,
     resolve_optional_project,
@@ -132,9 +133,7 @@ def list_connections(
 @app.command("get")
 def get_connection(
     name: str = typer.Argument(help="Connection name or ID"),
-    project: str | None = typer.Option(
-        None, "--project", help="Project name or id; required when connections in two projects share a name"
-    ),
+    project: str | None = typer.Option(None, "--project", help=get_same_name_project_help("connections")),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
     is_json: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
@@ -308,9 +307,7 @@ def _build_connection_config(
 @app.command("test")
 def test_connection(
     name: str = typer.Argument(help="Connection name or ID to test"),
-    project: str | None = typer.Option(
-        None, "--project", help="Project name or id; required when connections in two projects share a name"
-    ),
+    project: str | None = typer.Option(None, "--project", help=get_same_name_project_help("connections")),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Verify a connection can reach its target.
@@ -338,9 +335,7 @@ def test_connection(
 @app.command("update")
 def update_connection(
     name: str = typer.Argument(help="Connection name or ID to update"),
-    project: str | None = typer.Option(
-        None, "--project", help="Project name or id; required when connections in two projects share a name"
-    ),
+    project: str | None = typer.Option(None, "--project", help=get_same_name_project_help("connections")),
     host: str | None = typer.Option(None, help="New database host"),
     port: str | None = typer.Option(None, help="New database port"),
     database: str | None = typer.Option(None, help="New database name"),
@@ -386,9 +381,7 @@ def update_connection(
 @app.command("delete")
 def delete_connection(
     name: str = typer.Argument(help="Connection name or ID to delete"),
-    project: str | None = typer.Option(
-        None, "--project", help="Project name or id; required when connections in two projects share a name"
-    ),
+    project: str | None = typer.Option(None, "--project", help=get_same_name_project_help("connections")),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
     is_confirmed: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ) -> None:

@@ -13,6 +13,11 @@ from datamasque_cli.errors import ErrorCode, abort
 PROJECT_OPTION_HELP = "Project name or id"
 
 
+def get_same_name_project_help(resources: str) -> str:
+    """Return the `--project` help for a command that finds `resources` by a name more than one project can hold."""
+    return f"{PROJECT_OPTION_HELP}; required when {resources} in two projects share a name"
+
+
 class ProjectScoped(Protocol):
     """A resource that records its project as an `<id>-<slug>` reference."""
 

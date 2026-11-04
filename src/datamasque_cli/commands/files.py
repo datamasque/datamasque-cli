@@ -14,6 +14,7 @@ from datamasque_cli.projects import (
     PROJECT_OPTION_HELP,
     filter_by_project,
     get_project_names_by_reference,
+    get_same_name_project_help,
     project_label,
     require_single_or_abort,
     resolve_optional_project,
@@ -58,9 +59,7 @@ def list_files(
 def delete_file(
     file_type: str = typer.Argument(help="File type: snowflake-key"),
     name: str = typer.Argument(help="File name"),
-    project: str | None = typer.Option(
-        None, "--project", help="Project name or id; required when files in two projects share a name"
-    ),
+    project: str | None = typer.Option(None, "--project", help=get_same_name_project_help("files")),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
     is_confirmed: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ) -> None:
