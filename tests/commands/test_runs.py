@@ -19,12 +19,11 @@ from datamasque_cli.commands.runs import (
     _format_run_info,
     _parse_options,
     _print_pretty_logs,
-    _resolve_connection,
-    _resolve_connection_id,
     _resolve_ruleset_id,
 )
 from datamasque_cli.errors import ExitCode
 from datamasque_cli.main import app
+from tests.conftest import DEFAULT_PROJECT_REFERENCE, with_projects
 
 MODULE = "datamasque_cli.commands.runs"
 
@@ -38,6 +37,7 @@ def _run_info(**overrides: Any) -> RunInfo:
         "source_connection": "src-uuid",
         "source_connection_name": "my_src",
         "ruleset_name": "demo",
+        "project": DEFAULT_PROJECT_REFERENCE,
     }
     data.update(overrides)
     return RunInfo.model_validate(data)
@@ -47,35 +47,22 @@ def _run_info(**overrides: Any) -> RunInfo:
 
 
 def test_format_run_info_uses_nested_connection_name() -> None:
-    result = _format_run_info(_run_info())
+    result = _format_run_info(_run_info(), {DEFAULT_PROJECT_REFERENCE: "Default"})
     assert result["status"] == "finished"
     assert result["source"] == "my_src"
 
 
 def test_format_run_dict_prefers_status_over_run_status() -> None:
-    result = _format_run_dict({"id": 1, "status": "finished", "run_status": "queued"})
+    result = _format_run_dict({"id": 1, "status": "finished", "run_status": "queued"}, {})
     assert result["status"] == "finished"
 
 
 def test_format_run_dict_falls_back_to_run_status() -> None:
-    result = _format_run_dict({"id": 1, "run_status": "running"})
+    result = _format_run_dict({"id": 1, "run_status": "running"}, {})
     assert result["status"] == "running"
 
 
-# -- _resolve_connection_id / _resolve_ruleset_id --------------------------
-
-
-def test_resolve_connection_id_by_name(mock_client: MagicMock) -> None:
-    assert _resolve_connection_id(mock_client, "my_conn") == "1"
-
-
-def test_resolve_connection_id_by_id(mock_client: MagicMock) -> None:
-    assert _resolve_connection_id(mock_client, "2") == "2"
-
-
-def test_resolve_connection_id_not_found(mock_client: MagicMock) -> None:
-    with pytest.raises(SystemExit):
-        _resolve_connection_id(mock_client, "nonexistent")
+# -- _resolve_ruleset_id --------------------------------------------------
 
 
 def test_resolve_ruleset_id_by_name(mock_client: MagicMock) -> None:
@@ -88,38 +75,32 @@ def test_resolve_ruleset_id_not_found(mock_client: MagicMock) -> None:
 
 
 def test_resolve_ruleset_id_prefers_matching_mask_type() -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     client.list_rulesets.return_value = [
-        SimpleNamespace(id=1, name="demo", ruleset_type=RulesetType.database),
-        SimpleNamespace(id=2, name="demo", ruleset_type=RulesetType.file),
+        SimpleNamespace(id=1, name="demo", ruleset_type=RulesetType.database, project=DEFAULT_PROJECT_REFERENCE),
+        SimpleNamespace(id=2, name="demo", ruleset_type=RulesetType.file, project=DEFAULT_PROJECT_REFERENCE),
     ]
     assert _resolve_ruleset_id(client, "demo", mask_type="file") == "2"
     assert _resolve_ruleset_id(client, "demo", mask_type="database") == "1"
 
 
 def test_resolve_ruleset_id_aborts_when_type_missing() -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     client.list_rulesets.return_value = [
-        SimpleNamespace(id=1, name="demo", ruleset_type=RulesetType.database),
+        SimpleNamespace(id=1, name="demo", ruleset_type=RulesetType.database, project=DEFAULT_PROJECT_REFERENCE),
     ]
     with pytest.raises(SystemExit):
         _resolve_ruleset_id(client, "demo", mask_type="file")
 
 
 def test_resolve_ruleset_id_ambiguous_without_type() -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     client.list_rulesets.return_value = [
-        SimpleNamespace(id=1, name="demo", ruleset_type=RulesetType.database),
-        SimpleNamespace(id=2, name="demo", ruleset_type=RulesetType.file),
+        SimpleNamespace(id=1, name="demo", ruleset_type=RulesetType.database, project=DEFAULT_PROJECT_REFERENCE),
+        SimpleNamespace(id=2, name="demo", ruleset_type=RulesetType.file, project=DEFAULT_PROJECT_REFERENCE),
     ]
     with pytest.raises(SystemExit):
         _resolve_ruleset_id(client, "demo")
-
-
-def test_resolve_connection_returns_name_and_type(mock_client: MagicMock) -> None:
-    conn = _resolve_connection(mock_client, "my_conn")
-    assert conn.name == "my_conn"
-    assert conn.mask_type == "database"
 
 
 # -- start_run (behaviour, not wiring) ------------------------------------
@@ -162,15 +143,15 @@ def test_start_run_uses_connection_name_for_run_label(
 
 @patch(f"{MODULE}.get_client")
 def test_start_run_passes_connection_type_to_ruleset_resolver(mock_get_client: MagicMock, runner: CliRunner) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.list_connections.return_value = [
-        SimpleNamespace(id=1, name="files_in", mask_type="file"),
-        SimpleNamespace(id=2, name="files_out", mask_type="file"),
+        SimpleNamespace(id=1, name="files_in", mask_type="file", project=DEFAULT_PROJECT_REFERENCE),
+        SimpleNamespace(id=2, name="files_out", mask_type="file", project=DEFAULT_PROJECT_REFERENCE),
     ]
     client.list_rulesets.return_value = [
-        SimpleNamespace(id=10, name="demo", ruleset_type=RulesetType.database),
-        SimpleNamespace(id=20, name="demo", ruleset_type=RulesetType.file),
+        SimpleNamespace(id=10, name="demo", ruleset_type=RulesetType.database, project=DEFAULT_PROJECT_REFERENCE),
+        SimpleNamespace(id=20, name="demo", ruleset_type=RulesetType.file, project=DEFAULT_PROJECT_REFERENCE),
     ]
     client.start_masking_run.return_value = RunId(42)
     client.get_run_info.return_value = _run_info(id=42, status="finished", mask_type="file")
@@ -184,14 +165,14 @@ def test_start_run_passes_connection_type_to_ruleset_resolver(mock_get_client: M
 
 @patch(f"{MODULE}.get_client")
 def test_start_run_aborts_on_destination_type_mismatch(mock_get_client: MagicMock, runner: CliRunner) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.list_connections.return_value = [
-        SimpleNamespace(id=1, name="db_src", mask_type="database"),
-        SimpleNamespace(id=2, name="files_dst", mask_type="file"),
+        SimpleNamespace(id=1, name="db_src", mask_type="database", project=DEFAULT_PROJECT_REFERENCE),
+        SimpleNamespace(id=2, name="files_dst", mask_type="file", project=DEFAULT_PROJECT_REFERENCE),
     ]
     client.list_rulesets.return_value = [
-        SimpleNamespace(id=10, name="demo", ruleset_type=RulesetType.database),
+        SimpleNamespace(id=10, name="demo", ruleset_type=RulesetType.database, project=DEFAULT_PROJECT_REFERENCE),
     ]
 
     result = runner.invoke(app, ["run", "start", "-c", "db_src", "-r", "demo", "-d", "files_dst"])
@@ -276,13 +257,13 @@ def test_start_run_passes_parsed_options_into_payload(
 
 @patch(f"{MODULE}.get_client")
 def test_start_run_aborts_when_file_source_has_no_destination(mock_get_client: MagicMock, runner: CliRunner) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.list_connections.return_value = [
-        SimpleNamespace(id=1, name="files_src", mask_type="file"),
+        SimpleNamespace(id=1, name="files_src", mask_type="file", project=DEFAULT_PROJECT_REFERENCE),
     ]
     client.list_rulesets.return_value = [
-        SimpleNamespace(id=10, name="demo", ruleset_type=RulesetType.file),
+        SimpleNamespace(id=10, name="demo", ruleset_type=RulesetType.file, project=DEFAULT_PROJECT_REFERENCE),
     ]
 
     result = runner.invoke(app, ["run", "start", "-c", "files_src", "-r", "demo"])
@@ -299,10 +280,11 @@ def test_start_run_aborts_when_file_source_has_no_destination(mock_get_client: M
 def test_retry_run_preserves_source_ruleset_destination_and_options(
     mock_get_client: MagicMock, runner: CliRunner
 ) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.get_run_info.return_value = RunInfo.model_validate(
         {
+            "project": DEFAULT_PROJECT_REFERENCE,
             "id": 100,
             "source_connection": "src-uuid",
             "source_connection_name": "my_src",
@@ -331,11 +313,12 @@ def test_retry_run_preserves_source_ruleset_destination_and_options(
 
 @patch(f"{MODULE}.get_client")
 def test_retry_run_strips_server_managed_option_keys(mock_get_client: MagicMock, runner: CliRunner) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     # `get_run_info` echoes server-managed option keys the POST endpoint rejects.
     client.get_run_info.return_value = RunInfo.model_validate(
         {
+            "project": DEFAULT_PROJECT_REFERENCE,
             "id": 300,
             "source_connection": "src-uuid",
             "source_connection_name": "my_src",
@@ -363,10 +346,11 @@ def test_retry_run_strips_server_managed_option_keys(mock_get_client: MagicMock,
 
 @patch(f"{MODULE}.get_client")
 def test_retry_run_aborts_when_original_missing_ruleset(mock_get_client: MagicMock, runner: CliRunner) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.get_run_info.return_value = RunInfo.model_validate(
         {
+            "project": DEFAULT_PROJECT_REFERENCE,
             "id": 200,
             "source_connection": "src-uuid",
             "source_connection_name": "my_src",
@@ -389,7 +373,7 @@ def test_retry_run_aborts_when_original_missing_ruleset(mock_get_client: MagicMo
 @patch(f"{MODULE}.time")
 @patch(f"{MODULE}.get_client")
 def test_logs_follow_polls_until_terminal(mock_get_client: MagicMock, _mock_time: MagicMock, runner: CliRunner) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.get_run_log.side_effect = ["line 1\n", "line 1\nline 2\n", "line 1\nline 2\nline 3\n"]
     client.get_run_info.side_effect = [
@@ -413,7 +397,7 @@ def test_logs_follow_polls_until_terminal(mock_get_client: MagicMock, _mock_time
 def test_logs_follow_recovers_when_server_rotates_log(
     mock_get_client: MagicMock, _mock_time: MagicMock, runner: CliRunner
 ) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     # Second poll returns a shorter log (server rotated / compacted).
     # Third poll adds a new line to the rotated buffer; it must still print.
@@ -440,7 +424,7 @@ def test_logs_follow_recovers_when_server_rotates_log(
 @patch(f"{MODULE}.time")
 @patch(f"{MODULE}.get_client")
 def test_wait_run_polls_until_terminal(mock_get_client: MagicMock, _mock_time: MagicMock, runner: CliRunner) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.get_run_info.side_effect = [
         _run_info(id=1, status="queued"),
@@ -456,7 +440,7 @@ def test_wait_run_polls_until_terminal(mock_get_client: MagicMock, _mock_time: M
 @patch(f"{MODULE}.time")
 @patch(f"{MODULE}.get_client")
 def test_wait_run_failure_exits_1(mock_get_client: MagicMock, _mock_time: MagicMock, runner: CliRunner) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.get_run_info.return_value = _run_info(id=1, status="failed")
 

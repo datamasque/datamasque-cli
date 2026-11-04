@@ -108,6 +108,28 @@ For instances with self-signed or expired TLS certificates
 pass `--insecure` to `dm auth login` to persist the toggle on the profile,
 or set `DATAMASQUE_VERIFY_SSL=false` to skip verification per call.
 
+## Projects
+
+Every connection, ruleset, library, discovery config, seed, file and table reference belongs to one project.
+This CLI needs a DataMasque version with projects (v3.26.21.0 or later); use an earlier CLI release with older versions.
+
+- `--project` takes a project name (any case) or its numeric ID.
+- List commands show each resource's project, and `--project` lists only that project's resources
+  (plus the built-in seeds, for `dm seeds list`).
+- Create, upload and validate commands put the resource in the `--project` project.
+  Without `--project`, a create updates the resource of that name in the one project that has it
+  (for rulesets and discovery configs, the one of the same type).
+  Otherwise they use the instance's only project, and fail asking for one when there are several.
+- Get, update and delete commands find a resource by name in any project.
+  When the name exists in more than one project they fail asking for `--project`.
+
+```console
+dm rulesets list --project Finance
+dm rulesets create --name customers --file rules.yaml --type database --project Finance
+dm seeds upload names.csv --project Finance
+dm run start -c finance_db -r customers --project Finance
+```
+
 ## Commands
 
 ### Authentication
@@ -148,9 +170,11 @@ dm rulesets generate --file request.json          # Generate from schema
 dm rulesets generate --file req.json -o out.yaml  # Generate to file
 dm rulesets validate --file rules.yaml --type database|file  # Validate against server (YAML under 60 KiB)
 dm rulesets status <name>                         # Validation status; poll after creating YAML of 60 KiB+
-dm rulesets export-bundle -o bundle.zip           # Export rulesets + libraries + seeds
+dm rulesets export-bundle -o bundle.zip           # Export rulesets + libraries, by project
+dm rulesets export-bundle -o bundle.zip --include-seed-files  # Also bundle the custom seed files they use
 dm rulesets import-bundle --file bundle.zip       # Import a previously exported bundle
 dm rulesets import-bundle -f bundle.zip --overwrite-rulesets --overwrite-libraries  # Replace existing entries
+dm rulesets import-bundle -f bundle.zip --fallback-project <project>  # Project for items filed under none
 ```
 
 ### Ruleset libraries
@@ -160,11 +184,11 @@ dm libraries list                                 # List all libraries
 dm libraries get <name>                           # Show library details
 dm libraries get <name> --yaml                    # Print raw YAML only
 dm libraries create --name <n> --file lib.yaml    # Create/update from file
-dm libraries create --name <n> --file lib.yaml --namespace pii  # With namespace
+dm libraries create --name <n> --file lib.yaml --project pii   # In a given project
 dm libraries delete <name>                        # Delete a library
 dm libraries validate <name>                      # Re-validate against current server schema
 dm libraries status <name>                        # Validation status; poll after creating YAML of 60 KiB+
-dm libraries usage <name>                         # Show rulesets using it
+dm libraries usage <name>                         # Show rulesets using it, with their projects
 ```
 
 ### Table references
@@ -179,6 +203,33 @@ dm table-references update <name> --source <new-path>                   # Change
 dm table-references update <name> --delimiter ';' --null-string NULL    # Any CSV/format flag replaces options wholesale, not a merge
 dm table-references delete <name>                                       # Delete a table reference
 ```
+
+### Projects
+
+```console
+dm projects list                                    # id, name, description, created
+dm projects list --include-deleted                  # Adds deleted projects, with a deleted column
+dm projects get <name-or-id>                        # Show a project's details
+dm projects create --name <name> --description "<text>"
+dm projects update <name-or-id> --name <new-name>   # Rename; --description changes the description
+dm projects delete <name-or-id> --to <name-or-id>   # Move every resource to the --to project, then delete
+dm projects delete <name-or-id> --to <name-or-id> --check  # Only list what would stop the delete
+```
+
+Creating, renaming and deleting projects needs an admin user.
+Renaming makes rulesets and configurations that import one of the project's libraries by the old project name invalid.
+
+### Moving resources
+
+```console
+dm resources move --project Finance --to Archive                # Every resource in Finance
+dm resources move customers orders --type rulesets --to Archive # Rulesets with these exact names, from any project
+dm resources move --search payroll --to HR --check              # Only list the matches and what would stop them moving
+```
+
+Resources move with their files and runs. `--project`, `--type`, `--search` and names combine; pass at least one.
+A resource that clashes with the destination (same name, or a file in the way) stays where it is, the others move,
+and the command exits with the `conflict` code, listing each one that stayed.
 
 ### In-flight masking
 
@@ -260,11 +311,11 @@ The same library can be imported by both database and file discovery configs.
 
 ```console
 dm discover libraries list
-dm discover libraries get <name> [--namespace org] [--yaml]
-dm discover libraries create --name <n> --namespace org -f lib.yaml
-dm discover libraries delete <name> [--namespace org] [--force]    # --force if imported by configs
-dm discover libraries validate -f lib.yaml
-dm discover libraries status <name> [--namespace org]
+dm discover libraries get <name> [--project org] [--yaml]
+dm discover libraries create --name <n> --project org -f lib.yaml
+dm discover libraries delete <name> [--project org] [--force]      # --force if imported by configs
+dm discover libraries validate -f lib.yaml [--project org]
+dm discover libraries status <name> [--project org]
 ```
 
 ### Seeds

@@ -97,7 +97,7 @@ masks:
 
 ### Output format
 
-`Global/RuleLib` below is a placeholder for `<namespace>/<library_name>` — substitute the operator's real values, and create the library with `dm libraries create` before running the ruleset.
+`Global/RuleLib` below is a placeholder for `<project>/<library_name>` — substitute the operator's real values, and create the library with `dm libraries create` before running the ruleset.
 
 ```yaml
 version: '1.0'
