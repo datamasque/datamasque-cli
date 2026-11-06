@@ -162,7 +162,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "datamasque-python", specifier = ">=1.7.0.dev11,<2", index = "https://test.pypi.org/simple/" },
+    { name = "datamasque-python", specifier = ">=1.7.0.dev12,<2", index = "https://test.pypi.org/simple/" },
     { name = "pydantic", specifier = ">=2.5,<3" },
     { name = "rich", specifier = ">=13.8" },
     { name = "tomli-w", specifier = ">=1.0.0,<2" },
@@ -180,15 +180,15 @@ dev = [
 
 [[package]]
 name = "datamasque-python"
-version = "1.7.0.dev11"
+version = "1.7.0.dev12"
 source = { registry = "https://test.pypi.org/simple/" }
 dependencies = [
     { name = "pydantic" },
     { name = "requests" },
 ]
-sdist = { url = "https://test-files.pythonhosted.org/packages/de/04/b099330f0248a4bc932aa43b267c63f9069829f2daf9dd7c0b60c15df9df/datamasque_python-1.7.0.dev11.tar.gz", hash = "sha256:9d71161a70715ebba4099ed7188d2d3db02943a75815f00ce9e19e1b51731b3d", size = 247651, upload-time = "2026-11-03T05:25:25.579Z" }
+sdist = { url = "https://test-files.pythonhosted.org/packages/87/f2/31b2cf352148b75340f2d7622645a53967f04b61da88bcfe003d9ed4c3fe/datamasque_python-1.7.0.dev12.tar.gz", hash = "sha256:2270db2591d0b5883ac1ebb271b7b1f1a37bc0a381b267f2bd27f832391785f0", size = 247499, upload-time = "2026-11-06T02:39:32.723Z" }
 wheels = [
-    { url = "https://test-files.pythonhosted.org/packages/c4/0f/1965bc575726088729e525ffc0f16bfb2ffdec8822235a3c6b3f5479f9e4/datamasque_python-1.7.0.dev11-py3-none-any.whl", hash = "sha256:66e125e6373b94b81a8df7cc61ea9be0819448eda100e91cf8485d5355a3332b", size = 101133, upload-time = "2026-11-03T05:25:24.068Z" },
+    { url = "https://test-files.pythonhosted.org/packages/b3/ed/aecad534c9f3e7473c41e55bebf9013a720011ef001bbf862b4dfc2f63ae/datamasque_python-1.7.0.dev12-py3-none-any.whl", hash = "sha256:ee5d7e32328ae61efd9f40ce7d8b4abcaa642a906bb4f933661948d85df259eb", size = 101448, upload-time = "2026-11-06T02:39:31.077Z" },
 ]
 
 [[package]]
