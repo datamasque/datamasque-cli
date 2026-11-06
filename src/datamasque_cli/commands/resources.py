@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import typer
 from datamasque.client import DataMasqueClient
-from datamasque.client.exceptions import DataMasqueApiError
+from datamasque.client.exceptions import DataMasqueApiError, ResourceMoveConflictError
 from datamasque.client.models.project import Project
 from datamasque.client.models.resource import Resource, ResourceMoveConflict
 from datamasque.client.models.resource_type import ResourceTypeName
@@ -16,7 +16,6 @@ from datamasque_cli.projects import PROJECT_OPTION_HELP, get_named_project, proj
 
 app = typer.Typer(help="Work with resources of every type.", no_args_is_help=True)
 
-MOVE_CONFLICT_MESSAGE = "Some resources did not move"
 MOVE_CHECK_CONFLICT_MESSAGE = "Some resources would not move"
 
 
@@ -85,7 +84,8 @@ def move_resources(
     Move resources to another project, with their files and runs.
 
     Select them by project, type, a name search or exact names; the filters combine.
-    A resource that clashes with the destination stays where it is, and the others move.
+    All of them move, or none do: a resource that clashes with the destination stops the move.
+    A resource already in the destination stays there, and the others move.
     Rulesets and configurations whose library imports resolve differently after the move become invalid.
     """
     if not (names or sources or type_names or search):
@@ -139,14 +139,13 @@ def move_resources(
 
     try:
         result = client.move_resources(selected, target)
+    except ResourceMoveConflictError as exc:
+        abort(
+            f"No resources moved to '{target.name}'",
+            code=ErrorCode.CONFLICT,
+            details=_get_conflict_details(exc.conflicts),
+        )
     except DataMasqueApiError as exc:
         abort_api_error(f"Failed to move resources to '{target.name}'", exc)
 
-    if result.conflicts:
-        message = (
-            f"{MOVE_CONFLICT_MESSAGE}; {result.moved} moved to '{target.name}'"
-            if result.moved
-            else f"No resources moved to '{target.name}'"
-        )
-        abort(message, code=ErrorCode.CONFLICT, details=_get_conflict_details(result.conflicts))
     print_success(f"Moved {_describe_resource_count(result.moved)} to '{target.name}'.")

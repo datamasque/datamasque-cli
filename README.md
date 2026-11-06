@@ -228,8 +228,9 @@ dm resources move --search payroll --to HR --check              # Only list the 
 ```
 
 Resources move with their files and runs. `--project`, `--type`, `--search` and names combine; pass at least one.
-A resource that clashes with the destination (same name, or a file in the way) stays where it is, the others move,
-and the command exits with the `conflict` code, listing each one that stayed.
+All of the resources move, or none do. A resource that clashes with the destination (same name, or a file in the way)
+stops the move, and the command exits with the `conflict` code, listing each one. A resource already in the
+destination stays there, and the others move.
 
 ### In-flight masking
 
