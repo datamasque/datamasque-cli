@@ -4,6 +4,7 @@ from collections.abc import Iterator
 from unittest.mock import MagicMock, patch
 
 import pytest
+from datamasque.client.exceptions import ResourceMoveConflictError
 from datamasque.client.models.resource import (
     Resource,
     ResourceMoveConflict,
@@ -43,7 +44,7 @@ def client() -> Iterator[MagicMock]:
         ResourceTypeName.rulesets: [CUSTOMERS, ORDERS, ALREADY_THERE],
         ResourceTypeName.seeds: [BUILT_IN_SEED],
     }
-    client.move_resources.return_value = ResourceMoveResult(moved=2, conflicts=[])
+    client.move_resources.return_value = ResourceMoveResult(moved=2)
     with patch(f"{MODULE}.get_client", return_value=client):
         yield client
 
@@ -126,19 +127,11 @@ def test_move_with_nothing_outside_the_destination_is_not_found(client: MagicMoc
     client.move_resources.assert_not_called()
 
 
-def test_move_that_leaves_resources_behind_names_them_and_fails(client: MagicMock, runner: CliRunner) -> None:
-    client.move_resources.return_value = ResourceMoveResult(moved=1, conflicts=[CUSTOMERS_CLASH])
-
-    result = runner.invoke(app, ["resources", "move", "--project", "finance", "--to", "default", "-y"])
-
-    assert result.exit_code == ExitCode.CONFLICT
-    assert result.stderr == (
-        "Error: Some resources did not move; 1 moved to 'Default':\n  Ruleset \"customers\" exists.\n"
+def test_move_with_a_conflict_says_none_moved_and_names_it(client: MagicMock, runner: CliRunner) -> None:
+    response = MagicMock(status_code=409)
+    client.move_resources.side_effect = ResourceMoveConflictError(
+        "No resources moved.", response=response, conflicts=[CUSTOMERS_CLASH]
     )
-
-
-def test_move_that_moves_nothing_says_none_moved(client: MagicMock, runner: CliRunner) -> None:
-    client.move_resources.return_value = ResourceMoveResult(moved=0, conflicts=[CUSTOMERS_CLASH])
 
     result = runner.invoke(app, ["resources", "move", "--project", "finance", "--to", "default", "-y"])
 
