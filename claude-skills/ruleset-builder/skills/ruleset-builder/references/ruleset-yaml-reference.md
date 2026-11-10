@@ -86,6 +86,7 @@ cross-table reference parameter exists. See `fk-cascade.md`.
 - `from_fixed` — fixed replacement value
 - `from_column` — copy from another column
 - `from_file` — random value from CSV seed file (>50 distinct values)
+- `from_table_reference` - random value from a column of a table reference (`table_reference`, `column`; optional `where`, `order`, `limit`, `distinct`); not supported in in-flight masking
 - `from_choices` — random from a small set (<50 values)
 - `from_format_string` — structured pattern (e.g., `"{[A-Z],3}{[0-9],3}"`)
 - `from_blob` — replace with file contents
