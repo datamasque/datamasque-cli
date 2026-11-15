@@ -29,12 +29,12 @@ Report the Ruleset Builder version (from `plugin.json`) and `dm version` so the 
 Canonical mask reference:
 <https://portal.datamasque.com/portal/documentation/latest/masking-functions-overview.html>
 
-Read all of these before any other work:
+Read all of these, relative to this skill's directory, before any other work:
 ```
-${CLAUDE_PLUGIN_ROOT}/skills/ruleset-builder/references/fk-cascade.md
-${CLAUDE_PLUGIN_ROOT}/skills/ruleset-builder/references/mask-definitions-guide.md
-${CLAUDE_PLUGIN_ROOT}/skills/ruleset-builder/references/hash-columns-guide.md
-${CLAUDE_PLUGIN_ROOT}/skills/ruleset-builder/references/ruleset-yaml-reference.md
+references/fk-cascade.md
+references/mask-definitions-guide.md
+references/hash-columns-guide.md
+references/ruleset-yaml-reference.md
 ```
 
 ---
