@@ -68,9 +68,11 @@ def _list_or_abort(client: DataMasqueClient) -> list[TableReference]:
 
 def _get_or_abort(client: DataMasqueClient, name: str, project: str | None) -> TableReference:
     """Return the table reference named `name`, in `project` or in the one project that has it, else abort."""
-    named = [ref for ref in _list_or_abort(client) if ref.name == name]
+    named_references = [ref for ref in _list_or_abort(client) if ref.name == name]
     return require_single_or_abort(
-        client, filter_by_project(named, resolve_optional_project(client, project)), f"Table reference '{name}'"
+        client,
+        filter_by_project(named_references, resolve_optional_project(client, project)),
+        f"Table reference '{name}'",
     )
 
 
@@ -140,9 +142,11 @@ def _resolve_connection_id(
     so a name that other projects share needs no `--project`. Otherwise every project is searched.
     """
     if project is None:
-        own = [c for c in client.list_connections() if c.name == name_or_id and c.project == reference_project]
-        if own:
-            return own[0].id
+        own_project_connections = [
+            c for c in client.list_connections() if c.name == name_or_id and c.project == reference_project
+        ]
+        if own_project_connections:
+            return own_project_connections[0].id
     return resolve_connection(client, name_or_id, project).id
 
 

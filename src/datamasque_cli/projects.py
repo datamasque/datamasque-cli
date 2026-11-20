@@ -18,6 +18,20 @@ def get_same_name_project_help(resources: str) -> str:
     return f"{PROJECT_OPTION_HELP}; required when {resources} in two projects share a name"
 
 
+def get_only_project_help(action: str) -> str:
+    """Return the `--project` help for a command that `action`s into one project, the only one when omitted."""
+    return f"Project to {action}; required when the instance has more than one"
+
+
+def get_named_resources_project_help(resources: str) -> str:
+    """Return the `--project` help for a command that finds several `resources` by names more than one project can hold."""
+    return f"Project of the {resources}, when their names exist in more than one"
+
+
+PROJECT_UPLOAD_HELP = get_only_project_help("upload to")
+PROJECT_VALIDATE_HELP = get_only_project_help("validate in")
+
+
 class ProjectScoped(Protocol):
     """A resource that records its project as an `<id>-<slug>` reference."""
 

@@ -12,6 +12,7 @@ from datamasque_cli.errors import confirm_or_abort
 from datamasque_cli.output import print_success, render_output
 from datamasque_cli.projects import (
     PROJECT_OPTION_HELP,
+    PROJECT_UPLOAD_HELP,
     filter_by_project,
     get_project_names_by_reference,
     get_same_name_project_help,
@@ -43,9 +44,7 @@ def list_seeds(
 @app.command("upload")
 def upload_seed(
     file: Path = typer.Argument(help="Path to seed file", exists=True, readable=True),
-    project: str | None = typer.Option(
-        None, "--project", help="Project to upload to; required when the instance has more than one"
-    ),
+    project: str | None = typer.Option(None, "--project", help=PROJECT_UPLOAD_HELP),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Upload a seed file."""
@@ -64,9 +63,9 @@ def delete_seed(
 ) -> None:
     """Delete a seed file by filename."""
     client = get_client(profile)
-    named = [seed for seed in client.list_files_of_type(SeedFile) if seed.name == filename]
+    named_seeds = [seed for seed in client.list_files_of_type(SeedFile) if seed.name == filename]
     match = require_single_or_abort(
-        client, filter_by_project(named, resolve_optional_project(client, project)), f"Seed file '{filename}'"
+        client, filter_by_project(named_seeds, resolve_optional_project(client, project)), f"Seed file '{filename}'"
     )
 
     if not is_confirmed:

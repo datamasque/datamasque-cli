@@ -32,6 +32,7 @@ from datamasque_cli.fileio import (
 from datamasque_cli.output import print_info, print_success, print_warning, render_output, should_emit_json
 from datamasque_cli.projects import (
     PROJECT_OPTION_HELP,
+    PROJECT_VALIDATE_HELP,
     filter_by_project,
     get_project_names_by_reference,
     get_same_name_project_help,
@@ -227,9 +228,7 @@ def validate_ruleset(
         "-t",
         help="Ruleset type: database or file",
     ),
-    project: str | None = typer.Option(
-        None, "--project", help="Project to validate in; required when the instance has more than one"
-    ),
+    project: str | None = typer.Option(None, "--project", help=PROJECT_VALIDATE_HELP),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Validate a ruleset YAML file against the DataMasque server.

@@ -12,6 +12,7 @@ from datamasque_cli.errors import confirm_or_abort
 from datamasque_cli.output import print_success, render_output
 from datamasque_cli.projects import (
     PROJECT_OPTION_HELP,
+    PROJECT_UPLOAD_HELP,
     filter_by_project,
     get_project_names_by_reference,
     get_same_name_project_help,
@@ -67,9 +68,11 @@ def delete_file(
     klass = _resolve_file_type(file_type)
     client = get_client(profile)
 
-    named = [f for f in client.list_files_of_type(klass) if f.name == name]
+    named_files = [f for f in client.list_files_of_type(klass) if f.name == name]
     match = require_single_or_abort(
-        client, filter_by_project(named, resolve_optional_project(client, project)), f"File '{name}' ({file_type})"
+        client,
+        filter_by_project(named_files, resolve_optional_project(client, project)),
+        f"File '{name}' ({file_type})",
     )
 
     if not is_confirmed:
@@ -84,9 +87,7 @@ def upload_file(
     file_type: str = typer.Argument(help="File type: snowflake-key"),
     file: Path = typer.Option(..., "--file", "-f", help="Path to file", exists=True, readable=True),
     name: str = typer.Option(..., help="Name for the uploaded file"),
-    project: str | None = typer.Option(
-        None, "--project", help="Project to upload to; required when the instance has more than one"
-    ),
+    project: str | None = typer.Option(None, "--project", help=PROJECT_UPLOAD_HELP),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Upload a file."""

@@ -112,24 +112,23 @@ def delete_library(
     is_confirmed: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ) -> None:
     """Delete a ruleset library by name."""
-    label = name
 
     client = get_client(profile)
     lib = _find_library(client, name, project)
 
     if not is_confirmed:
-        confirm_or_abort(f"Delete library '{label}'?")
+        confirm_or_abort(f"Delete library '{name}'?")
 
     try:
         client.delete_ruleset_library_by_id_if_exists(lib.id, force=force)
     except DataMasqueApiError as exc:
         abort_api_error(
-            f"Failed to delete library '{label}'",
+            f"Failed to delete library '{name}'",
             exc,
             conflict_hint="Re-run with --force to delete it and flag the dependent rulesets for revalidation.",
         )
 
-    print_success(f"Library '{label}' deleted.")
+    print_success(f"Library '{name}' deleted.")
 
 
 @app.command("validate")
@@ -142,7 +141,6 @@ def validate_library(
 
     Triggers a server-side validation pass on an existing library and reports the result.
     """
-    label = name
 
     client = get_client(profile)
     lib = _find_library(client, name, project)
@@ -150,11 +148,11 @@ def validate_library(
     try:
         validated = client.validate_ruleset_library(lib.id)
     except DataMasqueApiError as exc:
-        abort_api_error(f"Failed to validate library '{label}'", exc)
-    abort_if_invalid(f"Library '{label}'", validated.is_valid, validated.validation_errors)
+        abort_api_error(f"Failed to validate library '{name}'", exc)
+    abort_if_invalid(f"Library '{name}'", validated.is_valid, validated.validation_errors)
 
     status = validated.is_valid.value if validated.is_valid else "unknown"
-    print_success(f"Library '{label}' validation status: {status}")
+    print_success(f"Library '{name}' validation status: {status}")
 
 
 @app.command("status")

@@ -43,23 +43,23 @@ def _get_resources_to_move(
     Built-in seeds belong to no project and cannot move, so they are left out too.
     Aborts with not-found when a name matches none of the resources the other filters select.
     """
-    listed = client.list_resources(projects=sources, types=type_names, search=search)
-    listed_names = {resource.name for resources in listed.values() for resource in resources}
+    listed_resources = client.list_resources(projects=sources, types=type_names, search=search)
+    listed_names = {resource.name for resources in listed_resources.values() for resource in resources}
     if unmatched_names := [name for name in dict.fromkeys(names) if name not in listed_names]:
         abort(
             f"No resources named {', '.join(repr(name) for name in unmatched_names)}.",
             code=ErrorCode.NOT_FOUND,
             hint="Check the names, and that --project, --type and --search select them.",
         )
-    selected = {
+    selected_resources = {
         type_name: [
             resource
             for resource in resources
             if resource.project not in (None, destination.reference) and (not names or resource.name in names)
         ]
-        for type_name, resources in listed.items()
+        for type_name, resources in listed_resources.items()
     }
-    return {type_name: resources for type_name, resources in selected.items() if resources}
+    return {type_name: resources for type_name, resources in selected_resources.items() if resources}
 
 
 @app.command("move")
@@ -98,7 +98,7 @@ def move_resources(
     client = get_client(profile)
     projects = client.list_projects()
     target = get_named_project(projects, destination)
-    selected = _get_resources_to_move(
+    resources_to_move = _get_resources_to_move(
         client,
         names=names or [],
         sources=[get_named_project(projects, source) for source in sources] if sources else None,
@@ -106,7 +106,7 @@ def move_resources(
         search=search,
         destination=target,
     )
-    if not selected:
+    if not resources_to_move:
         abort(f"No resources to move to '{target.name}'.", code=ErrorCode.NOT_FOUND)
 
     # The selection leaves out resources in no project, and a deleted project has no resources left.
@@ -117,7 +117,7 @@ def move_resources(
             "name": resource.name,
             "project": project_label(project_names_by_reference, resource.project),
         }
-        for type_name, resources in selected.items()
+        for type_name, resources in resources_to_move.items()
         for resource in resources
     ]
     render_output(
@@ -126,7 +126,7 @@ def move_resources(
 
     if is_check_only:
         try:
-            conflicts = client.get_resource_move_conflicts(selected, target)
+            conflicts = client.get_resource_move_conflicts(resources_to_move, target)
         except DataMasqueApiError as exc:
             abort_api_error("Failed to check the move", exc)
         if conflicts:
@@ -138,7 +138,7 @@ def move_resources(
         confirm_or_abort(f"Move {_describe_resource_count(len(rows))} to '{target.name}'?")
 
     try:
-        result = client.move_resources(selected, target)
+        result = client.move_resources(resources_to_move, target)
     except ResourceMoveConflictError as exc:
         abort(
             f"No resources moved to '{target.name}'",

@@ -257,8 +257,7 @@ def test_runs_list_project_is_filtered_on_the_server(mock_get_client: MagicMock,
     result = runner.invoke(app, ["run", "list", "--project", "Finance", "--json"])
 
     assert result.exit_code == 0
-    query = client.make_request.call_args.args[1]
-    assert "project=2" in query
+    client.make_request.assert_called_once_with("GET", "/api/runs/?project=2&limit=20")
     assert json.loads(result.stdout)[0]["project"] == "Finance"
 
 

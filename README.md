@@ -111,7 +111,7 @@ or set `DATAMASQUE_VERIFY_SSL=false` to skip verification per call.
 ## Projects
 
 Every connection, ruleset, library, discovery config, seed, file and table reference belongs to one project.
-This CLI needs a DataMasque version with projects (v3.26.21.0 or later); use an earlier CLI release with older versions.
+This CLI needs a DataMasque version with projects (v3.26.22.0 or later); use an earlier CLI release with older versions.
 
 - `--project` takes a project name (any case) or its numeric ID.
 - List commands show each resource's project, and `--project` lists only that project's resources

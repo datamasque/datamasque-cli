@@ -29,6 +29,7 @@ from datamasque_cli.output import (
 from datamasque_cli.projects import (
     PROJECT_OPTION_HELP,
     filter_by_project,
+    get_named_resources_project_help,
     get_project_names_by_reference,
     project_label,
     resolve_optional_project,
@@ -194,7 +195,7 @@ def start_run(
         False, "--background", "-b", help="Return immediately without waiting for completion"
     ),
     project: str | None = typer.Option(
-        None, "--project", help="Project of the ruleset and connections, when their names exist in more than one"
+        None, "--project", help=get_named_resources_project_help("ruleset and connections")
     ),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
     is_json: bool = typer.Option(False, "--json", help="Output as JSON"),

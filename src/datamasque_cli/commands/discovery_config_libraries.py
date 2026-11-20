@@ -17,6 +17,7 @@ from datamasque_cli.fileio import read_text_or_abort
 from datamasque_cli.output import print_success, print_warning, render_output
 from datamasque_cli.projects import (
     PROJECT_OPTION_HELP,
+    PROJECT_VALIDATE_HELP,
     filter_by_project,
     get_project_names_by_reference,
     project_label,
@@ -127,32 +128,29 @@ def delete_library(
     If the library is imported by any discovery configs,
     the server rejects the delete unless --force is passed.
     """
-    label = name
 
     client = get_client(profile)
     lib = _find_library(client, name, project)
 
     if not is_confirmed:
-        confirm_or_abort(f"Delete discovery config library '{label}'?")
+        confirm_or_abort(f"Delete discovery config library '{name}'?")
 
     try:
         client.delete_discovery_config_library_by_id_if_exists(lib.id, force=force)
     except DataMasqueApiError as exc:
         abort_api_error(
-            f"Failed to delete discovery config library '{label}'",
+            f"Failed to delete discovery config library '{name}'",
             exc,
             conflict_hint="Re-run with --force to delete it and mark the dependent configs invalid.",
         )
 
-    print_success(f"Discovery config library '{label}' deleted.")
+    print_success(f"Discovery config library '{name}' deleted.")
 
 
 @app.command("validate")
 def validate_library(
     file: Path = typer.Option(..., "--file", "-f", help="Path to YAML library file", exists=True, readable=True),
-    project: str | None = typer.Option(
-        None, "--project", help="Project to validate in; required when the instance has more than one"
-    ),
+    project: str | None = typer.Option(None, "--project", help=PROJECT_VALIDATE_HELP),
     profile: str | None = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Validate a discovery config library YAML file against the DataMasque server.
