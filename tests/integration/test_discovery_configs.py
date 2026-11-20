@@ -9,7 +9,6 @@ from typer.testing import CliRunner
 from datamasque_cli.errors import ExitCode
 from datamasque_cli.main import app
 from tests.integration.conftest import (
-    DISCOVERY_TEST_NAMESPACE,
     create_discovery_config,
     create_discovery_config_library,
     get_error_envelope_from_stderr,
@@ -123,22 +122,25 @@ def test_library_create_get_delete_lifecycle(
     assert gone.exit_code == ExitCode.NOT_FOUND
 
 
-def test_library_namespace_is_isolated(
+def test_library_project_is_isolated(
     runner: CliRunner,
     discovery_library_name: str,
+    second_project: str,
     discovery_library_yaml: Path,
 ) -> None:
-    create_discovery_config_library(
-        runner, discovery_library_name, discovery_library_yaml, namespace=DISCOVERY_TEST_NAMESPACE
-    )
+    create_discovery_config_library(runner, discovery_library_name, discovery_library_yaml, project=second_project)
 
-    in_namespace = runner.invoke(
-        app, ["discover", "libraries", "get", discovery_library_name, "--namespace", DISCOVERY_TEST_NAMESPACE]
+    in_project = runner.invoke(
+        app, ["discover", "libraries", "get", discovery_library_name, "--project", second_project]
     )
-    assert in_namespace.exit_code == 0
+    assert in_project.exit_code == 0
 
-    default_namespace = runner.invoke(app, ["discover", "libraries", "get", discovery_library_name])
-    assert default_namespace.exit_code == ExitCode.NOT_FOUND
+    other_projects = [
+        row["project"]
+        for row in json.loads(runner.invoke(app, ["discover", "libraries", "list", "--json"]).stdout)
+        if row["name"] == discovery_library_name
+    ]
+    assert other_projects == [second_project]
 
 
 def test_library_validate_rejects_invalid_yaml(
@@ -158,6 +160,7 @@ def test_library_delete_refuses_while_imported_then_force_succeeds(
     runner: CliRunner,
     discovery_library_name: str,
     discovery_config_name: str,
+    second_project: str,
     tmp_path: Path,
 ) -> None:
     library = tmp_path / "importable.yaml"
@@ -173,9 +176,9 @@ def test_library_delete_refuses_while_imported_then_force_succeeds(
         "      type: regex\n"
         "      pattern: dm_int_column\n"
     )
-    create_discovery_config_library(runner, discovery_library_name, library, namespace=DISCOVERY_TEST_NAMESPACE)
+    create_discovery_config_library(runner, discovery_library_name, library, project=second_project)
 
-    ref = f"{DISCOVERY_TEST_NAMESPACE}/{discovery_library_name}"
+    ref = f"{second_project}/{discovery_library_name}"
     config = tmp_path / "importing.yaml"
     config.write_text(
         f"imports:\n"
@@ -189,15 +192,15 @@ def test_library_delete_refuses_while_imported_then_force_succeeds(
         f"  include:\n"
         f'  - "*.csv"\n'
     )
-    create_discovery_config(runner, discovery_config_name, "file", config)
+    create_discovery_config(runner, discovery_config_name, "file", config, project=second_project)
 
     delete = [
         "discover",
         "libraries",
         "delete",
         discovery_library_name,
-        "--namespace",
-        DISCOVERY_TEST_NAMESPACE,
+        "--project",
+        second_project,
         "--yes",
     ]
 

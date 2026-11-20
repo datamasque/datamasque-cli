@@ -17,6 +17,7 @@ from typer.testing import CliRunner
 from datamasque_cli.commands.connections import _format_role
 from datamasque_cli.errors import ExitCode
 from datamasque_cli.main import app
+from tests.conftest import with_projects
 
 MODULE = "datamasque_cli.commands.connections"
 
@@ -58,7 +59,7 @@ def test_format_role_for_database_connections_is_always_source() -> None:
 
 @patch(f"{MODULE}.get_client")
 def test_list_connections_includes_role_column(mock_get_client: MagicMock, runner: CliRunner) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.list_connections.return_value = [
         MountedShareConnectionConfig(
@@ -82,7 +83,7 @@ def test_list_connections_includes_role_column(mock_get_client: MagicMock, runne
 
 @patch(f"{MODULE}.get_client")
 def test_create_connection_database(mock_get_client: MagicMock, runner: CliRunner) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
 
     result = runner.invoke(
@@ -114,7 +115,7 @@ def test_create_connection_database(mock_get_client: MagicMock, runner: CliRunne
 
 @patch(f"{MODULE}.get_client")
 def test_create_connection_mounted_share(mock_get_client: MagicMock, runner: CliRunner) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
 
     result = runner.invoke(
@@ -144,7 +145,7 @@ def test_create_connection_missing_name_aborts(mock_get_client: MagicMock, runne
 
 @patch(f"{MODULE}.get_client")
 def test_create_connection_from_json_file(mock_get_client: MagicMock, runner: CliRunner, tmp_path: MagicMock) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
 
     conn_file = tmp_path / "conn.json"
@@ -173,7 +174,7 @@ def test_create_connection_from_json_file_invalid_schema_aborts(
     mock_get_client: MagicMock, runner: CliRunner, tmp_path: MagicMock
 ) -> None:
     """Valid JSON that doesn't match the connection type's schema aborts cleanly instead of raising."""
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
 
     conn_file = tmp_path / "conn.json"
@@ -191,7 +192,7 @@ def test_create_connection_from_json_file_invalid_schema_aborts(
 def test_create_databricks_connection_from_json_file(
     mock_get_client: MagicMock, runner: CliRunner, tmp_path: MagicMock
 ) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
 
     conn_file = tmp_path / "dbx.json"
@@ -220,7 +221,7 @@ def test_create_databricks_connection_from_json_file(
 def test_create_mongodb_connection_from_json_file(
     mock_get_client: MagicMock, runner: CliRunner, tmp_path: MagicMock
 ) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
 
     conn_file = tmp_path / "mongo.json"
@@ -253,7 +254,7 @@ def test_delete_connection_confirmed(mock_get_client: MagicMock, mock_client: Ma
     mock_get_client.return_value = mock_client
 
     runner.invoke(app, ["connections", "delete", "my_conn", "--yes"])
-    mock_client.delete_connection_by_name_if_exists.assert_called_once_with("my_conn")
+    mock_client.delete_connection_by_id_if_exists.assert_called_once_with(1)
 
 
 @patch(f"{MODULE}.get_client")
@@ -261,7 +262,7 @@ def test_delete_connection_declined(mock_get_client: MagicMock, mock_client: Mag
     mock_get_client.return_value = mock_client
 
     runner.invoke(app, ["connections", "delete", "my_conn"], input="n\n")
-    mock_client.delete_connection_by_name_if_exists.assert_not_called()
+    mock_client.delete_connection_by_id_if_exists.assert_not_called()
 
 
 @patch(f"{MODULE}.get_client")
@@ -273,7 +274,7 @@ def test_delete_connection_aborts_when_missing(
     result = runner.invoke(app, ["connections", "delete", "no_such_conn", "--yes"])
 
     assert result.exit_code == ExitCode.NOT_FOUND
-    mock_client.delete_connection_by_name_if_exists.assert_not_called()
+    mock_client.delete_connection_by_id_if_exists.assert_not_called()
 
 
 # -- test (reachability check) --------------------------------------------
@@ -369,7 +370,7 @@ def test_update_connection_aborts_when_missing(
 
 @patch(f"{MODULE}.get_client")
 def test_get_connection_redacts_password(mock_get_client: MagicMock, runner: CliRunner) -> None:
-    client = MagicMock()
+    client = with_projects(MagicMock())
     mock_get_client.return_value = client
     client.list_connections.return_value = [
         DatabaseConnectionConfig(
