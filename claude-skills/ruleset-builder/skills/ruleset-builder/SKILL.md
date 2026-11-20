@@ -14,13 +14,13 @@ Transform auto-generated DataMasque rulesets into production-ready rulesets with
 
 FK cascade is automatic: mask the parent PK with `imitate_unique` (or `imitate_uuid` / `imitate_nz_ird`) and the engine replicates the rule onto every FK column referencing it. **Do NOT add explicit rules for FK columns.** Avoid `from_unique_imitate` and `mask_unique_key` (both deprecated). Never skip IDs.
 
-5-step process (1–5). Use `TaskCreate` to track all 5; report after each step before proceeding. The prompt must include business domain and application type — ask if missing.
+5-step process (1–5). Track all 5 with the host's task tool (`TaskCreate` in Claude Code, the todo list in Kiro CLI). If the host has no task tool, keep a checklist in chat. Report after each step before proceeding. The prompt must include business domain and application type — ask if missing.
 
 ---
 
 ## Step 1: Report versions
 
-Report the Ruleset Builder version (from `plugin.json`) and `dm version` so the operator can correlate output with releases.
+Report the Ruleset Builder version and `dm version` so the operator can correlate output with releases. Read the Ruleset Builder version from `../../.claude-plugin/plugin.json` or `../../plugin.json`, relative to this skill's directory. If neither file exists, report the version as unknown.
 
 ---
 
