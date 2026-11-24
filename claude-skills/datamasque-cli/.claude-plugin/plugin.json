@@ -1,6 +1,6 @@
 {
   "name": "datamasque-cli",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "DataMasque command-line interface integration. Drive DataMasque from Claude Code: list connections, kick off runs, stream logs, download reports.",
   "author": { "name": "DataMasque Ltd" },
   "repository": "https://github.com/datamasque/datamasque-cli",

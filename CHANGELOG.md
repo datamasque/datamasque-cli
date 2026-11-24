@@ -1,5 +1,62 @@
 # Changelog
 
+## v1.7.0
+
+`dm` works with DataMasque projects.
+Every connection, ruleset, library, discovery config, seed, file and table
+reference belongs to one project.
+
+### Breaking changes
+- `dm` needs DataMasque v3.26.22.0 or later, the first version with projects.
+  Use `datamasque-cli` 1.5.1 with an earlier DataMasque version.
+- `--namespace` is removed from `dm libraries` and `dm discover libraries`.
+  Use `--project`.
+- `dm rulesets export-bundle` and `import-bundle` use the v2 export and import
+  endpoints. A bundle files each item under its project, and an import puts
+  the item in that project.
+- `dm rulesets export-bundle` bundles seed files only with
+  `--include-seed-files`.
+- `dm` needs datamasque-python 1.6.0 or later.
+
+### Added
+- `--project` on connections, rulesets, libraries, discovery configs,
+  discovery config libraries, seeds, files, table references, runs and
+  discovery runs. It takes a project name in any case, or the numeric ID.
+  - List commands show each resource's project, and `--project` lists one
+    project's resources.
+  - Create, upload and validate commands put the resource in the `--project`
+    project. Without `--project` they use the instance's only project, and
+    fail and ask for `--project` when the instance has several.
+  - Get, update and delete commands find a name in any project. They ask for
+    `--project` when the name exists in more than one project.
+- `dm projects` — manage projects (`list`, `get`, `create`, `update`,
+  `delete`). `list --include-deleted` adds deleted projects. `delete --to`
+  names the project that receives the deleted project's resources, and
+  `--check` lists what stops the delete without deleting.
+- `dm resources move --to <project>` — move resources to another project,
+  with their files and runs. `--project`, `--type`, `--search` or exact names
+  select the resources. When a resource clashes with the destination, no
+  resource moves, and the command lists each conflict and exits with the
+  `conflict` code. `--check` previews the move.
+- `dm rulesets export-bundle --include-seed-files` also bundles the custom
+  seed files the rulesets and libraries use.
+- `dm rulesets import-bundle --fallback-project` names the project for the
+  items a bundle files under no project, such as the items in an older
+  bundle. Without it they go into the server's default project.
+- Kiro can load the bundled skills. Each plugin under `claude-skills/` has a
+  root `plugin.json`, and `claude-skills/README.md` gives the Kiro import
+  steps.
+
+### Changed
+- `dm table-references create` and `update` look up `--connection` in the
+  reference's own project first, then in every project.
+- The `ruleset-builder` skill reads its reference files by paths relative to
+  the skill directory, and tracks its steps with the host's task tool or a
+  chat checklist, so it runs in hosts other than Claude Code.
+- The `datamasque-cli` and `ruleset-builder` plugins are version 1.2.0. Their
+  skills use `--project` in place of `--namespace`, so update the plugins with
+  `dm`.
+
 ## v1.6.0
 
 ### Added
