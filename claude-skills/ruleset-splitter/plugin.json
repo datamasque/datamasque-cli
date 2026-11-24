@@ -1,0 +1,16 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "ruleset-splitter",
+  "version": "1.0.0",
+  "description": "Consolidate multi-file DataMasque rulesets for editing, then re-split them back out.",
+  "author": {
+    "name": "DataMasque Ltd"
+  },
+  "repository": "https://github.com/datamasque/datamasque-cli",
+  "license": "Apache-2.0",
+  "keywords": [
+    "datamasque",
+    "ruleset",
+    "yaml"
+  ]
+}

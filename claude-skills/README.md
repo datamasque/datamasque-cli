@@ -1,7 +1,7 @@
-# Claude Code skills
+# Skills for Claude Code and Kiro
 
 - **`datamasque-cli/`** —
-teaches Claude how to operate a DataMasque instance with `dm`:
+teaches the agent how to operate a DataMasque instance with `dm`:
   - authenticate,
   - list connections,
   - start runs,
@@ -17,6 +17,10 @@ joins DataMasque's many-file generated rulesets into one file for editing, then 
 
 ## Install
 
+All three skills run `dm`. [Install the CLI](../README.md#installation) first.
+
+### Claude Code
+
 In [Claude Code](https://claude.com/claude-code), add this repo as a plugin marketplace and install the plugins you want:
 
 ```
@@ -26,7 +30,19 @@ In [Claude Code](https://claude.com/claude-code), add this repo as a plugin mark
 /plugin install ruleset-splitter@datamasque-tools
 ```
 
+### Kiro
+
+Clone this repo.
+In [Kiro](https://kiro.dev/docs/powers/installation/), select **Powers → Add Custom Power → Import power from a folder**.
+Import each plugin folder as a separate power:
+
+- `claude-skills/datamasque-cli`
+- `claude-skills/ruleset-builder`
+- `claude-skills/ruleset-splitter`
+
 ## Uninstall
+
+In Claude Code:
 
 ```
 /plugin uninstall datamasque-cli@datamasque-tools
