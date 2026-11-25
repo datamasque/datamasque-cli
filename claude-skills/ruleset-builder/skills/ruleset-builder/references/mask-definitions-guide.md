@@ -187,3 +187,22 @@ Common seed files for `from_file` masks:
 Regional variants exist for BR, IN, AU, NZ, US.
 Use `from_file` when there are more than ~50 distinct values;
 use `from_choices` for fewer.
+
+When the values live in a database table or a CSV/Parquet file that changes outside DataMasque,
+use `from_table_reference` instead of `from_file`.
+It selects from a column of a table reference, read at the start of each run:
+
+```yaml
+mask_definitions:
+  - &mask_name_first_ref
+    type: from_table_reference
+    table_reference: approved_names
+    column: first_name
+    order: [created_at, id]   # required with limit
+    limit: 10000
+```
+
+With `hash_columns`, keep the pool stable between runs:
+`order` on a column that only increases as rows are added, a pool that holds `limit` rows,
+and a source where rows are only appended.
+`where` works on database table references only.
