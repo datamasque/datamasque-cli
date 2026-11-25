@@ -193,15 +193,16 @@ use `from_table_reference` instead of `from_file`.
 It selects from a column of a table reference, read at the start of each run:
 
 ```yaml
-mask_name_first_ref: &mask_name_first_ref
-  type: from_table_reference
-  table_reference: approved_names
-  column: first_name
-  order: [created_at, id]   # required with limit
-  limit: 10000
+mask_definitions:
+  - &mask_name_first_ref
+    type: from_table_reference
+    table_reference: approved_names
+    column: first_name
+    order: [created_at, id]   # required with limit
+    limit: 10000
 ```
 
 With `hash_columns`, keep the pool stable between runs:
-`order` on a column that only increases as rows are added, a `limit`,
+`order` on a column that only increases as rows are added, a pool that holds `limit` rows,
 and a source where rows are only appended.
 `where` works on database table references only.
